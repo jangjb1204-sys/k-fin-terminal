@@ -1,0 +1,10 @@
+services:
+  kfin-terminal:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./.terminal_data:/app/.terminal_data
+    restart: unless-stopped
