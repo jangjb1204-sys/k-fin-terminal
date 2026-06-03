@@ -155,6 +155,87 @@ def status_chip(status: str) -> str:
 
 @st.cache_data(ttl=45, show_spinner=False)
 def fetch_quote_table(symbols: tuple[str, ...]) -> pd.DataFrame:
+    rows = {
+        symbol: {
+            "symbol": symbol,
+            "price": np.nan,
+            "change_pct": np.nan,
+            "volume": np.nan,
+            "asof": "",
+            "status": STATUS_NONE,
+            "source": "Yahoo Finance",
+            "message": "",
+        }
+        for symbol in symbols
+    }
+    if not symbols:
+        return pd.DataFrame(rows.values())
+    try:
+        raw = yf.download(
+            list(symbols),
+            period="5d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+        )
+        for symbol in symbols:
+            try:
+                hist = raw[symbol] if isinstance(raw.columns, pd.MultiIndex) else raw
+                hist = hist.dropna(how="all")
+                if hist.empty or "Close" not in hist.columns:
+                    continue
+                last = hist.iloc[-1]
+                prev = hist["Close"].iloc[-2] if len(hist) > 1 else np.nan
+                change_pct = (last["Close"] / prev - 1) * 100 if prev and not pd.isna(prev) else np.nan
+                rows[symbol].update(
+                    price=float(last["Close"]),
+                    change_pct=float(change_pct) if not pd.isna(change_pct) else np.nan,
+                    volume=float(last.get("Volume", np.nan)),
+                    asof=str(hist.index[-1]),
+                    status=STATUS_DELAYED,
+                )
+            except Exception as exc:
+                rows[symbol]["message"] = str(exc)
+    except Exception as exc:
+        for symbol in symbols:
+            rows[symbol]["message"] = str(exc)
+    return pd.DataFrame(rows.values())
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def fetch_single_quote(symbol: str) -> dict[str, Any]:
+    row = {
+        "symbol": symbol,
+        "price": np.nan,
+        "change_pct": np.nan,
+        "volume": np.nan,
+        "asof": "",
+        "status": STATUS_NONE,
+        "source": "Yahoo Finance",
+        "message": "",
+    }
+    try:
+        hist = yf.Ticker(symbol).history(period="5d", interval="1d", auto_adjust=False)
+        if hist.empty:
+            return row
+        last = hist.iloc[-1]
+        prev = hist["Close"].iloc[-2] if len(hist) > 1 else np.nan
+        change_pct = (last["Close"] / prev - 1) * 100 if prev and not pd.isna(prev) else np.nan
+        row.update(
+            price=float(last["Close"]),
+            change_pct=float(change_pct) if not pd.isna(change_pct) else np.nan,
+            volume=float(last.get("Volume", np.nan)),
+            asof=str(hist.index[-1]),
+            status=STATUS_DELAYED,
+        )
+    except Exception as exc:
+        row["message"] = str(exc)
+    return row
+
+
+def fetch_quote_table_legacy(symbols: tuple[str, ...]) -> pd.DataFrame:
     rows = []
     for symbol in symbols:
         row = {
@@ -729,23 +810,25 @@ def main() -> None:
     init_page()
     user_data = auth_panel()
     topbar()
-    tabs = st.tabs(["시장", "모니터", "차트", "뉴스", "포트폴리오", "리서치/공시", "옵션", "주문", "AI", "설정", "레이아웃"])
+    nav_items = ["시장", "모니터", "차트", "뉴스", "포트폴리오", "리서치/공시", "옵션", "주문", "AI", "설정", "레이아웃"]
+    active_tab = st.radio("탭", nav_items, horizontal=True, label_visibility="collapsed", key="active_terminal_tab")
     symbol = (user_data or {}).get("settings", {}).get("default_symbol", "AAPL")
-    price_result = fetch_price_history(symbol, "1y", "1d")
+    price_result = DataResult(pd.DataFrame(), STATUS_NONE, "Not loaded")
     news: list[dict[str, Any]] = []
-    with tabs[0]:
+
+    if active_tab == "시장":
         market_tab()
-    with tabs[1]:
+    elif active_tab == "모니터":
         layout_tab()
-    with tabs[2]:
+    elif active_tab == "차트":
         symbol, price_result = charts_tab(user_data)
-    with tabs[3]:
+    elif active_tab == "뉴스":
         news = news_tab(symbol)
-    with tabs[4]:
+    elif active_tab == "포트폴리오":
         portfolio_tab(user_data)
-    with tabs[5]:
+    elif active_tab == "리서치/공시":
         research_tab(symbol)
-    with tabs[6]:
+    elif active_tab == "옵션":
         st.warning("옵션 체인/옵션 플로우는 실시간성 및 라이선스 제한 때문에 Polygon, Tradier, Cboe DataShop 또는 브로커 API 키가 필요합니다.")
         try:
             expirations = yf.Ticker(symbol).options
@@ -757,13 +840,14 @@ def main() -> None:
                 st.info(f"{symbol}: {STATUS_NONE}")
         except Exception:
             st.info(f"{symbol}: {STATUS_API} 또는 데이터 제한")
-    with tabs[7]:
+    elif active_tab == "주문":
         orders_tab()
-    with tabs[8]:
+    elif active_tab == "AI":
+        price_result = fetch_price_history(symbol, "1y", "1d")
         ai_tab(symbol, price_result, news, user_data)
-    with tabs[9]:
+    elif active_tab == "설정":
         tools_tab(user_data)
-    with tabs[10]:
+    elif active_tab == "레이아웃":
         layout_tab()
 
 
