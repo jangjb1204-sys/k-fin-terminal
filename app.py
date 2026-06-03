@@ -109,6 +109,67 @@ html, body, .stApp { background:var(--bg)!important; color:var(--text)!important
 .news-meta { color:#7d8b9e; font:10px JetBrains Mono; display:flex; gap:8px; flex-wrap:wrap; }
 .warning-box { border:1px solid #694c16; background:#191306; color:#e7c84b; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:8px; }
 .ok-box { border:1px solid #1d6545; background:#06170f; color:#8af1bd; padding:8px 10px; border-radius:4px; font-size:12px; }
+.terminal-grid {
+  display:grid; grid-template-columns:minmax(230px, 20%) minmax(420px, 1fr) minmax(260px, 27%);
+  gap:6px; align-items:start;
+}
+.stack { display:grid; gap:6px; }
+.terminal-panel {
+  border:1px solid var(--line); background:linear-gradient(180deg,#0b1118,#080d13);
+  border-radius:3px; overflow:hidden; min-height:100px;
+}
+.terminal-panel .head {
+  height:28px; display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:0 8px; border-bottom:1px solid var(--line); background:#070b10;
+  color:#dce7f3; font-size:10px; font-weight:800; text-transform:uppercase;
+}
+.terminal-panel .body { padding:8px; }
+.term-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 0; border-bottom:1px solid #16202d; font-size:11px; }
+.term-row:last-child { border-bottom:none; }
+.term-label { color:#8d9aae; }
+.term-value { color:#eef6ff; font-family:JetBrains Mono,monospace; white-space:nowrap; }
+.regime-meter { display:grid; grid-template-columns:74px 1fr; gap:10px; align-items:center; }
+.donut {
+  width:70px; height:70px; border-radius:50%; display:grid; place-items:center;
+  background:conic-gradient(var(--green) var(--meter), #1a2634 0); border:1px solid #26384f;
+  box-shadow:inset 0 0 0 9px #0b1118;
+}
+.donut span { font:700 10px JetBrains Mono,monospace; color:#dce7f3; }
+.bar-row { display:grid; grid-template-columns:78px 1fr 52px; gap:7px; align-items:center; padding:4px 0; font-size:10px; }
+.bar-track { height:8px; background:#182332; border:1px solid #26384f; border-radius:99px; overflow:hidden; }
+.bar-fill { height:100%; background:linear-gradient(90deg,#20d982,#e7c84b); width:var(--w); }
+.bar-fill.neg { background:linear-gradient(90deg,#ff5a6d,#7c3340); }
+.terminal-chart {
+  min-height:270px; border:1px solid #1e2a39; background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+    #081019; background-size:32px 28px; position:relative; overflow:hidden;
+}
+.chart-line {
+  position:absolute; left:12px; right:12px; top:42px; height:120px;
+  background:linear-gradient(135deg, transparent 0 10%, rgba(32,217,130,.28) 10% 12%, transparent 12% 28%, rgba(75,163,255,.32) 28% 30%, transparent 30% 48%, rgba(231,200,75,.28) 48% 50%, transparent 50% 72%, rgba(32,217,130,.28) 72% 74%, transparent 74%);
+  clip-path:polygon(0 72%, 12% 57%, 24% 63%, 35% 42%, 49% 48%, 62% 28%, 76% 38%, 88% 20%, 100% 26%, 100% 100%, 0 100%);
+  opacity:.85;
+}
+.chart-placeholder {
+  position:absolute; left:12px; right:12px; top:62px; bottom:72px; display:grid; place-items:center;
+  border:1px dashed #2c3f57; background:rgba(6,9,13,.38); color:#8391a5;
+  font-size:11px; text-align:center; line-height:1.5;
+}
+.chart-status { position:absolute; left:12px; top:12px; display:flex; gap:5px; flex-wrap:wrap; }
+.chart-legend { position:absolute; left:12px; right:12px; bottom:10px; display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.legend-box { border:1px solid #223041; background:#0a111b; padding:6px; min-height:42px; }
+.legend-box label { display:block; color:#8190a4; font-size:9px; }
+.legend-box strong { display:block; color:#edf5ff; font:700 12px JetBrains Mono,monospace; margin-top:3px; }
+.heat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
+.heat-cell { min-height:43px; border:1px solid #233247; background:#101926; padding:6px; }
+.heat-cell b { display:block; font-size:10px; color:#dce7f3; }
+.heat-cell span { display:block; margin-top:4px; font:700 11px JetBrains Mono,monospace; }
+.action-split { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.paper-btn { text-align:center; padding:7px 0; border:1px solid #28415d; background:#111c2a; font-size:11px; font-weight:800; }
+.paper-btn.buy { color:#03140b; background:#20d982; border-color:#20d982; }
+.paper-btn.sell { color:#ffb1ba; }
+.terminal-note { color:#7d8b9e; font-size:10px; line-height:1.45; }
 .stTabs [data-baseweb="tab-list"] { gap:4px; border-bottom:1px solid var(--line); overflow-x:auto; }
 .stTabs [data-baseweb="tab"] { height:31px; background:#0a1018; border:1px solid #1e2a39; border-bottom:none; border-radius:3px 3px 0 0; padding:0 12px; }
 .stTabs [aria-selected="true"] { background:#132032!important; color:#fff!important; }
@@ -177,6 +238,12 @@ button,input,textarea,select { border-radius:3px!important; }
   .news-item b { font-size:11px; }
   .news-item p { font-size:10px; }
   iframe { max-width:100%!important; }
+  .terminal-grid { grid-template-columns:1fr; }
+  .terminal-chart { min-height:240px; }
+  .chart-legend { grid-template-columns:repeat(2,1fr); }
+  .heat-grid { grid-template-columns:repeat(2,1fr); }
+  .regime-meter { grid-template-columns:64px 1fr; }
+  .donut { width:60px; height:60px; }
 }
 </style>
         """,
@@ -546,6 +613,189 @@ def topbar() -> None:
     st.markdown(f"<div class='strip'>{''.join(cells)}</div>", unsafe_allow_html=True)
 
 
+def quote_record(quotes: pd.DataFrame, symbol: str) -> dict[str, Any]:
+    row = quotes[quotes["symbol"] == symbol]
+    if row.empty:
+        return {"symbol": symbol, "price": np.nan, "change_pct": np.nan, "status": STATUS_NONE}
+    return row.iloc[0].to_dict()
+
+
+def quote_price_text(record: dict[str, Any], prefix: str = "$") -> str:
+    value = record.get("price", np.nan)
+    if pd.isna(value):
+        return STATUS_NONE
+    if prefix:
+        return money(value, prefix)
+    return f"{float(value):,.2f}"
+
+
+def quote_pct_text(record: dict[str, Any]) -> str:
+    return pct(record.get("change_pct", np.nan))
+
+
+def quote_status_text(record: dict[str, Any]) -> str:
+    return str(record.get("status") or STATUS_NONE)
+
+
+def render_bar(label: str, value: Any) -> str:
+    if value is None or pd.isna(value):
+        return f"<div class='bar-row'><span class='term-label'>{label}</span><div class='bar-track'></div><span class='term-value'>{STATUS_NONE}</span></div>"
+    width = max(6, min(100, abs(float(value)) * 18))
+    cls = "neg" if float(value) < 0 else ""
+    return (
+        f"<div class='bar-row'><span class='term-label'>{label}</span>"
+        f"<div class='bar-track'><div class='bar-fill {cls}' style='--w:{width:.0f}%'></div></div>"
+        f"<span class='{class_for_change(value)} term-value'>{pct(value)}</span></div>"
+    )
+
+
+def render_heat_cell(label: str, record: dict[str, Any]) -> str:
+    change = record.get("change_pct", np.nan)
+    cls = class_for_change(change)
+    return f"<div class='heat-cell'><b>{label}</b><span class='{cls}'>{quote_pct_text(record)}</span></div>"
+
+
+def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
+    spx = quote_record(quotes, "^GSPC")
+    ndx = quote_record(quotes, "^IXIC")
+    vix = quote_record(quotes, "^VIX")
+    us10y = quote_record(quotes, "^TNX")
+    wti = quote_record(quotes, "CL=F")
+    gold = quote_record(quotes, "GC=F")
+    usdkrw = quote_record(quotes, "KRW=X")
+    btc = quote_record(quotes, "BTC-USD")
+    aapl = quote_record(quotes, "AAPL")
+    nvda = quote_record(quotes, "NVDA")
+    spy = quote_record(quotes, "SPY")
+    qqq = quote_record(quotes, "QQQ")
+    samsung = quote_record(quotes, "005930.KS")
+
+    spx_change = spx.get("change_pct", np.nan)
+    vix_price = vix.get("price", np.nan)
+    if pd.isna(spx_change) or pd.isna(vix_price):
+        regime = STATUS_NONE
+        regime_detail = "무료 데이터 응답이 없거나 제한되었습니다."
+        meter = 18
+    elif spx_change >= 0 and vix_price < 20:
+        regime = "RISK-ON"
+        regime_detail = "주가지수 우위, 변동성 안정"
+        meter = 78
+    elif vix_price >= 25:
+        regime = "RISK-OFF"
+        regime_detail = "변동성 상승, 방어 모드"
+        meter = 35
+    else:
+        regime = "NEUTRAL"
+        regime_detail = "혼조 구간"
+        meter = 56
+
+    bars = "\n".join(
+        [
+            render_bar("AAPL", aapl.get("change_pct", np.nan)),
+            render_bar("NVDA", nvda.get("change_pct", np.nan)),
+            render_bar("SPY", spy.get("change_pct", np.nan)),
+            render_bar("QQQ", qqq.get("change_pct", np.nan)),
+            render_bar("Samsung", samsung.get("change_pct", np.nan)),
+        ]
+    )
+    html = f"""
+<div class="terminal-grid">
+  <div class="stack">
+    <section class="terminal-panel">
+      <div class="head"><span>Market Regime</span>{status_chip(quote_status_text(spx))}</div>
+      <div class="body">
+        <div class="regime-meter">
+          <div class="donut" style="--meter:{meter}%;"><span>{regime}</span></div>
+          <div>
+            <div class="term-row"><span class="term-label">SPX</span><span class="{class_for_change(spx_change)} term-value">{quote_pct_text(spx)}</span></div>
+            <div class="term-row"><span class="term-label">VIX</span><span class="term-value">{quote_price_text(vix, '')}</span></div>
+            <div class="terminal-note">{regime_detail}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="terminal-panel">
+      <div class="head"><span>Momentum Board</span><span class="status-chip">Watchlist</span></div>
+      <div class="body">{bars}</div>
+    </section>
+    <section class="terminal-panel">
+      <div class="head"><span>Data Coverage</span><span class="status-chip status-api">Provider</span></div>
+      <div class="body">
+        <div class="term-row"><span class="term-label">US/KR Quotes</span><span class="term-value">{STATUS_DELAYED}</span></div>
+        <div class="term-row"><span class="term-label">SEC Filings</span><span class="term-value">{STATUS_API}</span></div>
+        <div class="term-row"><span class="term-label">DART Filings</span><span class="term-value">{STATUS_API}</span></div>
+        <div class="term-row"><span class="term-label">Options Flow</span><span class="term-value">{STATUS_API}</span></div>
+      </div>
+    </section>
+  </div>
+  <div class="stack">
+    <section class="terminal-panel">
+      <div class="head"><span>Cross-Asset Monitor</span><span class="status-chip">Actual when available</span></div>
+      <div class="body">
+        <div class="terminal-chart">
+          <div class="chart-status">
+            {status_chip(quote_status_text(spx))}
+            <span class="status-chip">No synthetic prices</span>
+            <span class="status-chip status-api">Real-time API optional</span>
+          </div>
+          <div class="chart-placeholder">실제 캔들/거래량/RSI/MACD는 차트 탭에서 선택한 기간과 인터벌로 로드됩니다.<br>첫 화면은 빠른 시장 상태만 표시합니다.</div>
+          <div class="chart-legend">
+            <div class="legend-box"><label>SPX</label><strong>{quote_price_text(spx, '')}</strong></div>
+            <div class="legend-box"><label>NDX</label><strong>{quote_price_text(ndx, '')}</strong></div>
+            <div class="legend-box"><label>US 10Y</label><strong>{quote_price_text(us10y, '')}</strong></div>
+            <div class="legend-box"><label>USD/KRW</label><strong>{quote_price_text(usdkrw, '')}</strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="terminal-panel">
+      <div class="head"><span>Asset Heatmap</span><span class="status-chip">Change %</span></div>
+      <div class="body">
+        <div class="heat-grid">
+          {render_heat_cell("SPX", spx)}
+          {render_heat_cell("NDX", ndx)}
+          {render_heat_cell("WTI", wti)}
+          {render_heat_cell("GOLD", gold)}
+          {render_heat_cell("BTC", btc)}
+          {render_heat_cell("USD/KRW", usdkrw)}
+          {render_heat_cell("AAPL", aapl)}
+          {render_heat_cell("NVDA", nvda)}
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="stack">
+    <section class="terminal-panel">
+      <div class="head"><span>Order & Execution</span><span class="status-chip status-delay">Paper</span></div>
+      <div class="body">
+        <div class="term-row"><span class="term-label">Mode</span><span class="term-value">PAPER ONLY</span></div>
+        <div class="action-split"><div class="paper-btn buy">BUY</div><div class="paper-btn sell">SELL</div></div>
+        <div class="term-row"><span class="term-label">Live Trading</span><span class="term-value">{STATUS_API}</span></div>
+        <div class="terminal-note">실제 주문은 브로커 키, 2단계 확인, 서버측 리스크 체크 없이는 열리지 않습니다.</div>
+      </div>
+    </section>
+    <section class="terminal-panel">
+      <div class="head"><span>AI Assistant</span><span class="status-chip">KR Summary</span></div>
+      <div class="body">
+        <div class="term-row"><span class="term-label">Fallback</span><span class="term-value">Rules</span></div>
+        <div class="term-row"><span class="term-label">Gemini</span><span class="term-value">{'설정됨' if os.getenv('GEMINI_API_KEY') else STATUS_API}</span></div>
+        <div class="terminal-note">뉴스/차트/포트폴리오를 바탕으로 한국어 요약. API 키가 없으면 규칙 기반 요약 사용.</div>
+      </div>
+    </section>
+    <section class="terminal-panel">
+      <div class="head"><span>Portfolio Risk</span><span class="status-chip">Login</span></div>
+      <div class="body">
+        <div class="term-row"><span class="term-label">Holdings</span><span class="term-value">로그인 필요</span></div>
+        <div class="term-row"><span class="term-label">Sector/Currency</span><span class="term-value">저장 가능</span></div>
+        <div class="term-row"><span class="term-label">Broker Sync</span><span class="term-value">{STATUS_API}</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def chart_figure(frame: pd.DataFrame, symbol: str) -> go.Figure:
     fig = make_subplots(
         rows=4,
@@ -578,15 +828,16 @@ def chart_figure(frame: pd.DataFrame, symbol: str) -> go.Figure:
 
 
 def market_tab() -> None:
-    symbols = WATCHLIST_DEFAULT + ["^GSPC", "^IXIC", "GC=F", "CL=F", "KRW=X"]
+    symbols = list(dict.fromkeys(WATCHLIST_DEFAULT + list(US_MARKET_TICKERS.values())))
     quotes = fetch_quote_table(tuple(symbols))
+    render_terminal_dashboard(quotes)
     rows = []
     for _, row in quotes.iterrows():
         volume = int(row.get("volume", 0)) if pd.notna(row.get("volume", np.nan)) else STATUS_NONE
         rows.append(
             f"<tr><td>{row.get('symbol')}</td><td>{money(row.get('price'))}</td><td class='{class_for_change(row.get('change_pct'))}'>{pct(row.get('change_pct'))}</td><td>{volume}</td><td>{row.get('status')}</td><td>{row.get('source')}</td></tr>"
         )
-    st.markdown("<div class='terminal-card'><h3>Market Monitor <span>US/KR/ETF/FX/Rates/Commodities</span></h3><div class='body'>", unsafe_allow_html=True)
+    st.markdown("<div class='terminal-card'><h3>Raw Market Monitor <span>US/KR/ETF/FX/Rates/Commodities</span></h3><div class='body'>", unsafe_allow_html=True)
     st.markdown("<table class='dense-table'><thead><tr><th>Ticker</th><th>Last</th><th>Chg%</th><th>Volume</th><th>Status</th><th>Source</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table></div></div>", unsafe_allow_html=True)
     st.info("무료 공개 데이터는 대개 지연/제한 데이터입니다. 실시간 전문 시세는 Polygon, IEX Cloud, Nasdaq Data Link, broker market data 권한이 필요합니다.")
 
