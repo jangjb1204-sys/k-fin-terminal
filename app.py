@@ -677,7 +677,7 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
         <div class="term-row"><span class="term-label">US/KR Quotes</span><span class="term-value">{STATUS_DELAYED}</span></div>
         <div class="term-row"><span class="term-label">SEC Filings</span><span class="term-value">{STATUS_API}</span></div>
         <div class="term-row"><span class="term-label">DART Filings</span><span class="term-value">{STATUS_API}</span></div>
-        <div class="term-row"><span class="term-label">Options Flow</span><span class="term-value">{STATUS_API}</span></div>
+        <div class="term-row"><span class="term-label">Macro/FX/Commodities</span><span class="term-value">{STATUS_DELAYED}</span></div>
       </div>
     </section>
   </div>
@@ -719,15 +719,6 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
   </div>
   <div class="stack">
     <section class="terminal-panel">
-      <div class="head"><span>Order & Execution</span><span class="status-chip status-delay">Paper</span></div>
-      <div class="body">
-        <div class="term-row"><span class="term-label">Mode</span><span class="term-value">PAPER ONLY</span></div>
-        <div class="action-split"><div class="paper-btn buy">BUY</div><div class="paper-btn sell">SELL</div></div>
-        <div class="term-row"><span class="term-label">Live Trading</span><span class="term-value">{STATUS_API}</span></div>
-        <div class="terminal-note">실제 주문은 브로커 키, 2단계 확인, 서버측 리스크 체크 없이는 열리지 않습니다.</div>
-      </div>
-    </section>
-    <section class="terminal-panel">
       <div class="head"><span>AI Assistant</span><span class="status-chip">KR Summary</span></div>
       <div class="body">
         <div class="term-row"><span class="term-label">Fallback</span><span class="term-value">Rules</span></div>
@@ -740,7 +731,7 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
       <div class="body">
         <div class="term-row"><span class="term-label">Holdings</span><span class="term-value">자동 저장</span></div>
         <div class="term-row"><span class="term-label">Sector/Currency</span><span class="term-value">저장 가능</span></div>
-        <div class="term-row"><span class="term-label">Broker Sync</span><span class="term-value">{STATUS_API}</span></div>
+        <div class="term-row"><span class="term-label">External Sync</span><span class="term-value">사용 안 함</span></div>
       </div>
     </section>
   </div>
@@ -889,7 +880,7 @@ def portfolio_tab(user_data: dict[str, Any] | None) -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("평가금액", money(total_value))
     c2.metric("손익", money(pnl), pct(pnl / cost_sum * 100 if cost_sum else np.nan))
-    c3.metric("배당 예상", STATUS_API, "브로커/배당 API 필요")
+    c3.metric("배당 예상", STATUS_API, "배당 데이터 API 필요")
     c4.metric("리밸런싱", "확인 필요" if pd.notna(enriched["weight"].max()) and enriched["weight"].max() > 45 else "정상")
     fig = make_subplots(rows=1, cols=3, specs=[[{"type": "domain"}, {"type": "domain"}, {"type": "domain"}]], subplot_titles=["종목 비중", "섹터 비중", "국가 비중"])
     fig.add_trace(go.Pie(labels=enriched["ticker"], values=enriched["market_value"], hole=0.45), row=1, col=1)
@@ -909,7 +900,7 @@ def research_tab(symbol: str) -> None:
 <div class="mini-metric"><label>SEC Filings</label><strong>{STATUS_API}</strong><small>SEC companyfacts/submissions CIK 매핑 필요</small></div>
 <div class="mini-metric"><label>DART 공시</label><strong>{STATUS_API}</strong><small>DART_OPEN_API_KEY 필요</small></div>
 <div class="mini-metric"><label>실적</label><strong>{STATUS_DELAYED}</strong><small>Yahoo Finance 일부 제공</small></div>
-<div class="mini-metric"><label>옵션</label><strong>{STATUS_API}</strong><small>Polygon/Tradier/브로커 권장</small></div>
+<div class="mini-metric"><label>ETF/배당</label><strong>{STATUS_API}</strong><small>데이터 제공자 API 권장</small></div>
 </div>
         """,
         unsafe_allow_html=True,
@@ -923,30 +914,6 @@ def research_tab(symbol: str) -> None:
         cols[3].metric("Beta", f"{info.get('beta', STATUS_NONE)}")
     except Exception:
         st.warning("기본 재무 데이터 조회 실패")
-
-
-def orders_tab() -> None:
-    st.markdown("<div class='warning-box'>기본 모드는 Paper Trading입니다. 실제 주문은 설정에서 브로커와 LIVE 모드를 명시적으로 켠 뒤 별도 확인 절차를 거치도록 설계했습니다.</div>", unsafe_allow_html=True)
-    mode = st.radio("주문 모드", ["PAPER", "LIVE 잠금"], horizontal=True)
-    cols = st.columns(5)
-    cols[0].text_input("Ticker", "AAPL")
-    cols[1].selectbox("Side", ["Buy", "Sell"])
-    cols[2].number_input("Quantity", min_value=0.0, value=1.0)
-    cols[3].selectbox("Order Type", ["Market", "Limit", "Stop"])
-    cols[4].number_input("Limit Price", min_value=0.0, value=0.0)
-    if mode == "LIVE 잠금":
-        st.error("실제 주문은 비활성화되어 있습니다. 브로커 API, 권한, 2단계 확인, 서버측 주문 감사 로그가 필요합니다.")
-    elif st.button("Paper 주문 미리보기", use_container_width=True):
-        st.success("Paper order preview only. 실제 주문은 전송되지 않았습니다.")
-    st.table(
-        pd.DataFrame(
-            [
-                {"broker": "Alpaca", "status": STATUS_API, "env": "ALPACA_API_KEY / ALPACA_SECRET_KEY"},
-                {"broker": "Interactive Brokers", "status": STATUS_API, "env": "TWS/IB Gateway + ib_insync 권장"},
-                {"broker": "한국투자증권", "status": STATUS_API, "env": "KIS_APP_KEY / KIS_APP_SECRET / account"},
-            ]
-        )
-    )
 
 
 def ai_summary(symbol: str, price_result: DataResult, news: list[dict[str, Any]], portfolio: pd.DataFrame) -> str:
@@ -986,19 +953,16 @@ def tools_tab(user_data: dict[str, Any] | None) -> None:
     cols = st.columns(4)
     settings["default_symbol"] = cols[0].text_input("기본 종목", settings.get("default_symbol", "AAPL"))
     settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules", "gemini"], index=0 if settings.get("ai_provider") != "gemini" else 1)
-    settings["broker_mode"] = cols[2].selectbox("브로커 모드", ["paper", "live_locked"], index=0)
+    settings["data_provider"] = cols[2].selectbox("데이터 제공자", ["yahoo", "polygon"], index=0)
     settings["layout"] = cols[3].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
     if st.button("설정 저장", use_container_width=True):
         persist_user(user_data)
         st.success("저장했습니다.")
     envs = [
         ("GEMINI_API_KEY", "뉴스 번역/AI 분석"),
-        ("POLYGON_API_KEY", "실시간/옵션/집계 시세"),
+        ("POLYGON_API_KEY", "근실시간 시세/집계 캔들"),
         ("DART_OPEN_API_KEY", "한국 DART 공시"),
-        ("ALPACA_API_KEY", "Paper/Live 브로커"),
-        ("ALPACA_SECRET_KEY", "Paper/Live 브로커"),
-        ("KIS_APP_KEY", "한국투자증권 Open API"),
-        ("KIS_APP_SECRET", "한국투자증권 Open API"),
+        ("SEC_USER_AGENT", "SEC 공시 호출 식별자"),
     ]
     st.table(pd.DataFrame([{"env": name, "purpose": purpose, "status": "설정됨" if os.getenv(name) else STATUS_API} for name, purpose in envs]))
 
@@ -1030,7 +994,7 @@ def layout_tab() -> None:
   <div class="workspace">
     <section class="panel"><h4>Market Pulse</h4><div class="grid" id="left"></div></section>
     <section class="panel"><h4>Charts / Research</h4><div class="grid" id="center"></div></section>
-    <section class="panel"><h4>Order / AI / Risk</h4><div class="grid" id="right"></div></section>
+    <section class="panel"><h4>AI / Risk</h4><div class="grid" id="right"></div></section>
   </div>
   <script>
     const defaults = [
@@ -1039,9 +1003,8 @@ def layout_tab() -> None:
       ["center","Main Chart","Drag cards, resize boxes, and resize panel borders. Layout is saved in this browser.",10,10,430,250],
       ["center","News / Filings","SEC/DART cards show API-needed states until keys are configured.",455,10,300,250],
       ["center","Portfolio Graph","Use app Portfolio tab for large mode.",10,280,360,180],
-      ["right","Paper Order","Mode: <span class='yellow'>PAPER</span><br>Live trading locked by design.",10,10,260,140],
-      ["right","AI Assistant","Rules fallback works without API.<br>Gemini is optional.",10,170,260,130],
-      ["right","Risk","Max weight, sector, currency and country concentration.",10,320,260,150]
+      ["right","AI Assistant","Rules fallback works without API.<br>Gemini is optional.",10,10,260,130],
+      ["right","Risk","Max weight, sector, currency and country concentration.",10,170,260,150]
     ];
     const saved = JSON.parse(localStorage.getItem("kfin-layout-v1") || "null") || defaults;
     function makeBox(item) {
@@ -1079,7 +1042,7 @@ def main() -> None:
     init_page()
     user_data = load_owner_profile()
     topbar()
-    nav_items = ["시장", "모니터", "차트", "뉴스", "포트폴리오", "리서치/공시", "옵션", "주문", "AI", "설정", "레이아웃"]
+    nav_items = ["시장", "모니터", "차트", "뉴스", "포트폴리오", "리서치/공시", "AI", "설정", "레이아웃"]
     active_tab = st.radio("탭", nav_items, horizontal=True, label_visibility="collapsed", key="active_terminal_tab")
     symbol = (user_data or {}).get("settings", {}).get("default_symbol", "AAPL")
     price_result = DataResult(pd.DataFrame(), STATUS_NONE, "Not loaded")
@@ -1097,20 +1060,6 @@ def main() -> None:
         portfolio_tab(user_data)
     elif active_tab == "리서치/공시":
         research_tab(symbol)
-    elif active_tab == "옵션":
-        st.warning("옵션 체인/옵션 플로우는 실시간성 및 라이선스 제한 때문에 Polygon, Tradier, Cboe DataShop 또는 브로커 API 키가 필요합니다.")
-        try:
-            expirations = yf.Ticker(symbol).options
-            if expirations:
-                st.write(f"{symbol} 만기: {', '.join(expirations[:8])}")
-                chain = yf.Ticker(symbol).option_chain(expirations[0])
-                st.dataframe(chain.calls.head(20), use_container_width=True)
-            else:
-                st.info(f"{symbol}: {STATUS_NONE}")
-        except Exception:
-            st.info(f"{symbol}: {STATUS_API} 또는 데이터 제한")
-    elif active_tab == "주문":
-        orders_tab()
     elif active_tab == "AI":
         price_result = fetch_price_history(symbol, "1y", "1d")
         ai_tab(symbol, price_result, news, user_data)

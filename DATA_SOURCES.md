@@ -9,14 +9,14 @@
 | 환율 | Yahoo Finance FX symbols | 지연 데이터 | 은행 고시환율과 다를 수 있음 |
 | 한국 주식 | Yahoo Finance `.KS`, `.KQ` | 지연 데이터 | 일부 종목/거래량 제한 |
 | 뉴스 | Yahoo Finance News | 지연 데이터 | 제공 기사 수와 원문 접근 제한 |
-| 옵션 | Yahoo Finance option chain | 지연/API 제한 | 옵션 플로우/실시간 IV는 별도 API 필요 |
+| 배당/ETF 보유 | 제공자별 API | API 필요 | Yahoo 무료 데이터는 제한적 |
 
 ## 권장 상용/API 소스
 
-- 미국 실시간/옵션: Polygon.io, Tradier, IEX Cloud, Nasdaq Data Link, Cboe DataShop
+- 미국 근실시간/집계 시세: Polygon.io, IEX Cloud, Nasdaq Data Link
 - SEC: `data.sec.gov/submissions` 및 `companyfacts`, `SEC_USER_AGENT` 필수
 - 한국 DART: OpenDART, `DART_OPEN_API_KEY` 필요
-- 브로커/포트폴리오: Alpaca, Interactive Brokers, 한국투자증권 Open API
+- 포트폴리오: 현재는 수동 입력/로컬 저장
 - AI 번역/분석: Gemini API
 
 ## 가짜 데이터 금지 정책

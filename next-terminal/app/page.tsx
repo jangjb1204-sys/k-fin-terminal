@@ -44,7 +44,7 @@ const symbolLabels: Record<string, string> = {
   "BTC-USD": "BTC",
   "005930.KS": "Samsung"
 };
-const nav = ["Markets", "Charts", "News", "Portfolio", "Research", "Options", "Orders", "AI", "Settings"];
+const nav = ["Markets", "Charts", "News", "Portfolio", "Research", "AI", "Settings"];
 const ranges = ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y"];
 const intervals = ["1d", "1wk", "1mo"];
 
@@ -178,7 +178,7 @@ function TerminalCard({
 }
 
 function MarketHome({ quotes, loading }: { quotes: Map<string, QuoteRow>; loading: boolean }) {
-  const [order, setOrder] = useState(["regime", "chart", "heat", "momentum", "coverage", "orders", "ai", "portfolio"]);
+  const [order, setOrder] = useState(["regime", "chart", "heat", "momentum", "coverage", "ai", "portfolio"]);
   const [dragging, setDragging] = useState<string | null>(null);
   const spx = quotes.get("^GSPC");
   const vix = quotes.get("^VIX");
@@ -252,19 +252,8 @@ function MarketHome({ quotes, loading }: { quotes: Map<string, QuoteRow>; loadin
         <Row label="US/KR Quotes" value="지연 데이터" />
         <Row label="SEC Filings" value="API 필요" />
         <Row label="DART Filings" value="API 필요" />
-        <Row label="Options Flow" value="API 필요" />
-        <Row label="Broker Sync" value="API 필요" />
-      </TerminalCard>
-    ),
-    orders: (
-      <TerminalCard id="orders" title="Order & Execution" meta={<StatusPill status="지연 데이터" />} onDragStart={setDragging} onDrop={moveCard}>
-        <div className="trade-box">
-          <button className="buy">BUY</button>
-          <button className="sell">SELL</button>
-        </div>
-        <Row label="Mode" value="PAPER ONLY" />
-        <Row label="Live Trading" value="잠금" />
-        <p className="muted">실제 주문은 브로커 키와 2단계 확인 없이는 열리지 않습니다.</p>
+        <Row label="Macro/FX/Commodities" value="지연 데이터" />
+        <Row label="ETF/Dividend" value="API 필요" />
       </TerminalCard>
     ),
     ai: (
@@ -278,7 +267,7 @@ function MarketHome({ quotes, loading }: { quotes: Map<string, QuoteRow>; loadin
       <TerminalCard id="portfolio" title="Portfolio Risk" meta="Local" onDragStart={setDragging} onDrop={moveCard}>
         <Row label="Holdings" value="내 로컬 저장" />
         <Row label="Sector/Country" value="지원" />
-        <Row label="Broker" value="API 필요" />
+        <Row label="External Sync" value="사용 안 함" />
       </TerminalCard>
     )
   };
@@ -412,7 +401,7 @@ function PortfolioTab({ quotes }: { quotes: Map<string, QuoteRow> }) {
       <div className="summary-grid">
         <Mini label="Total" value={total ? fmtMoney(total) : "데이터 없음"} />
         <Mini label="Dividend" value="API 필요" />
-        <Mini label="Broker Sync" value="API 필요" />
+        <Mini label="Data Sync" value="수동/로컬" />
         <Mini label="Rebalance" value="확인 가능" />
       </div>
       <section className="panel">
@@ -443,8 +432,6 @@ function InfoTab({ type }: { type: string }) {
   const rows = {
     News: [["US News", "API 필요 또는 provider 연결"], ["Korean Translation", "Gemini 선택 연결"], ["Sentiment", "규칙 기반 가능"], ["Related Tickers", "제목/본문 추출"]],
     Research: [["SEC", "SEC_USER_AGENT / CIK 매핑 필요"], ["DART", "DART_OPEN_API_KEY 필요"], ["Earnings", "provider API 필요"], ["ETF Holdings", "issuer/provider API 필요"]],
-    Options: [["Option Chain", "Yahoo 일부 지연 데이터 또는 Polygon/Tradier"], ["Flow", "API 필요"], ["IV Surface", "API 필요"], ["Greeks", "provider API 필요"]],
-    Orders: [["Mode", "PAPER ONLY"], ["Alpaca", "API 필요"], ["IBKR", "Gateway 필요"], ["KIS", "API 필요"]],
     AI: [["Fallback", "Rules"], ["Gemini", "GEMINI_API_KEY 필요"], ["Inputs", "뉴스/공시/차트/포트폴리오"], ["Language", "Korean"]],
     Settings: [["Mode", "Single-user custom"], ["Secrets", "Vercel env / Secret Manager"], ["Layout", "localStorage"], ["Security", "HTTPS required"]]
   }[type] || [];
