@@ -1,8 +1,5 @@
-import hashlib
-import hmac
 import json
 import os
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +17,7 @@ from plotly.subplots import make_subplots
 
 APP_NAME = "K-Fin Terminal"
 APP_DIR = Path(".terminal_data")
+OWNER_ID = "owner"
 STATUS_REAL = "실제 데이터"
 STATUS_DELAYED = "지연 데이터"
 STATUS_API = "API 필요"
@@ -499,17 +497,6 @@ def translate_or_mark(text: str) -> str:
         return "번역 실패: 원문을 확인하세요."
 
 
-def password_hash(password: str, salt: str | None = None) -> tuple[str, str]:
-    salt = salt or uuid.uuid4().hex
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000).hex()
-    return salt, digest
-
-
-def verify_password(password: str, salt: str, digest: str) -> bool:
-    _, candidate = password_hash(password, salt)
-    return hmac.compare_digest(candidate, digest)
-
-
 def load_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -541,51 +528,17 @@ def ensure_user_file(username: str) -> Path:
     return path
 
 
-def auth_panel() -> dict[str, Any] | None:
-    users_path = APP_DIR / "users.json"
-    users = load_json(users_path, {})
-    if "user" not in st.session_state:
-        st.session_state.user = None
-    with st.expander("로그인 / 개인 설정 저장", expanded=st.session_state.user is None):
-        cols = st.columns([1, 1, 1, 1])
-        username = cols[0].text_input("사용자 ID", value="local_user")
-        password = cols[1].text_input("비밀번호", type="password")
-        action = cols[2].selectbox("작업", ["로그인", "계정 생성"])
-        submitted = cols[3].button("실행", use_container_width=True)
-        st.caption("로컬 데모 인증입니다. 운영 배포에서는 OIDC/Auth.js/Supabase Auth 같은 검증된 인증 계층을 붙이세요.")
-        if submitted:
-            if not username or not password:
-                st.warning("사용자 ID와 비밀번호를 입력하세요.")
-            elif action == "계정 생성":
-                if username in users:
-                    st.error("이미 존재하는 사용자입니다.")
-                else:
-                    salt, digest = password_hash(password)
-                    users[username] = {"salt": salt, "digest": digest, "created_at": datetime.now().isoformat(timespec="seconds")}
-                    save_json(users_path, users)
-                    ensure_user_file(username)
-                    st.session_state.user = username
-                    st.success("계정을 만들고 로그인했습니다.")
-            else:
-                record = users.get(username)
-                if record and verify_password(password, record["salt"], record["digest"]):
-                    st.session_state.user = username
-                    st.success("로그인했습니다.")
-                else:
-                    st.error("로그인 실패")
-    if st.session_state.user:
-        return load_json(ensure_user_file(st.session_state.user), {})
-    return None
+def load_owner_profile() -> dict[str, Any]:
+    st.session_state.user = "OWNER"
+    return load_json(ensure_user_file(OWNER_ID), {})
 
 
 def persist_user(data: dict[str, Any]) -> None:
-    username = st.session_state.get("user")
-    if username:
-        save_json(ensure_user_file(username), data)
+    save_json(ensure_user_file(OWNER_ID), data)
 
 
 def topbar() -> None:
-    user_label = st.session_state.get("user") or "GUEST"
+    user_label = "OWNER"
     st.markdown(
         f"""
 <div class="terminal-topbar">
@@ -783,9 +736,9 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
       </div>
     </section>
     <section class="terminal-panel">
-      <div class="head"><span>Portfolio Risk</span><span class="status-chip">Login</span></div>
+      <div class="head"><span>Portfolio Risk</span><span class="status-chip">Local</span></div>
       <div class="body">
-        <div class="term-row"><span class="term-label">Holdings</span><span class="term-value">로그인 필요</span></div>
+        <div class="term-row"><span class="term-label">Holdings</span><span class="term-value">자동 저장</span></div>
         <div class="term-row"><span class="term-label">Sector/Currency</span><span class="term-value">저장 가능</span></div>
         <div class="term-row"><span class="term-label">Broker Sync</span><span class="term-value">{STATUS_API}</span></div>
       </div>
@@ -906,8 +859,7 @@ def enrich_portfolio(df: pd.DataFrame) -> pd.DataFrame:
 
 def portfolio_tab(user_data: dict[str, Any] | None) -> None:
     if user_data is None:
-        st.warning("로그인하면 사용자별 포트폴리오, 관심종목, 설정을 저장할 수 있습니다. 비로그인 상태에서는 일반 시장 데이터와 뉴스만 조회합니다.")
-        return
+        user_data = load_owner_profile()
     raw = portfolio_frame(user_data)
     edited = st.data_editor(
         raw,
@@ -1029,17 +981,16 @@ def ai_tab(symbol: str, price_result: DataResult, news: list[dict[str, Any]], us
 def tools_tab(user_data: dict[str, Any] | None) -> None:
     st.subheader("사용자 설정")
     if user_data is None:
-        st.info("로그인하면 설정을 저장할 수 있습니다.")
-    else:
-        settings = user_data.setdefault("settings", {})
-        cols = st.columns(4)
-        settings["default_symbol"] = cols[0].text_input("기본 종목", settings.get("default_symbol", "AAPL"))
-        settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules", "gemini"], index=0 if settings.get("ai_provider") != "gemini" else 1)
-        settings["broker_mode"] = cols[2].selectbox("브로커 모드", ["paper", "live_locked"], index=0)
-        settings["layout"] = cols[3].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
-        if st.button("설정 저장", use_container_width=True):
-            persist_user(user_data)
-            st.success("설정을 저장했습니다.")
+        user_data = load_owner_profile()
+    settings = user_data.setdefault("settings", {})
+    cols = st.columns(4)
+    settings["default_symbol"] = cols[0].text_input("기본 종목", settings.get("default_symbol", "AAPL"))
+    settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules", "gemini"], index=0 if settings.get("ai_provider") != "gemini" else 1)
+    settings["broker_mode"] = cols[2].selectbox("브로커 모드", ["paper", "live_locked"], index=0)
+    settings["layout"] = cols[3].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
+    if st.button("설정 저장", use_container_width=True):
+        persist_user(user_data)
+        st.success("저장했습니다.")
     envs = [
         ("GEMINI_API_KEY", "뉴스 번역/AI 분석"),
         ("POLYGON_API_KEY", "실시간/옵션/집계 시세"),
@@ -1115,7 +1066,7 @@ def layout_tab() -> None:
       window.addEventListener("mouseup", () => { if(active){ active=false; persist(); } });
       new ResizeObserver(persist).observe(el);
     }
-    const note = document.createElement("div"); note.className="hint"; note.textContent="레이아웃 저장: browser localStorage. 로그인 사용자 서버 저장은 문서의 백엔드 어댑터로 확장.";
+    const note = document.createElement("div"); note.className="hint"; note.textContent="레이아웃 저장: browser localStorage. 단일 사용자용 커스텀 터미널.";
     document.body.appendChild(note);
   </script>
 </div>
@@ -1126,7 +1077,7 @@ def layout_tab() -> None:
 
 def main() -> None:
     init_page()
-    user_data = auth_panel()
+    user_data = load_owner_profile()
     topbar()
     nav_items = ["시장", "모니터", "차트", "뉴스", "포트폴리오", "리서치/공시", "옵션", "주문", "AI", "설정", "레이아웃"]
     active_tab = st.radio("탭", nav_items, horizontal=True, label_visibility="collapsed", key="active_terminal_tab")

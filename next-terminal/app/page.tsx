@@ -275,8 +275,8 @@ function MarketHome({ quotes, loading }: { quotes: Map<string, QuoteRow>; loadin
       </TerminalCard>
     ),
     portfolio: (
-      <TerminalCard id="portfolio" title="Portfolio Risk" meta="Login" onDragStart={setDragging} onDrop={moveCard}>
-        <Row label="Holdings" value="수동 저장" />
+      <TerminalCard id="portfolio" title="Portfolio Risk" meta="Local" onDragStart={setDragging} onDrop={moveCard}>
+        <Row label="Holdings" value="내 로컬 저장" />
         <Row label="Sector/Country" value="지원" />
         <Row label="Broker" value="API 필요" />
       </TerminalCard>
@@ -446,7 +446,7 @@ function InfoTab({ type }: { type: string }) {
     Options: [["Option Chain", "Yahoo 일부 지연 데이터 또는 Polygon/Tradier"], ["Flow", "API 필요"], ["IV Surface", "API 필요"], ["Greeks", "provider API 필요"]],
     Orders: [["Mode", "PAPER ONLY"], ["Alpaca", "API 필요"], ["IBKR", "Gateway 필요"], ["KIS", "API 필요"]],
     AI: [["Fallback", "Rules"], ["Gemini", "GEMINI_API_KEY 필요"], ["Inputs", "뉴스/공시/차트/포트폴리오"], ["Language", "Korean"]],
-    Settings: [["Login", "운영 Auth 필요"], ["Secrets", "Vercel env / Secret Manager"], ["Layout", "localStorage"], ["Security", "HTTPS required"]]
+    Settings: [["Mode", "Single-user custom"], ["Secrets", "Vercel env / Secret Manager"], ["Layout", "localStorage"], ["Security", "HTTPS required"]]
   }[type] || [];
   return (
     <section className="panel">
