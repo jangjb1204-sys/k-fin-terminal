@@ -2,7 +2,16 @@
 
 한국어 기반 미국주식 금융 터미널입니다. 미국 주식, ETF, 지수, 금리, 원자재, 환율, 한국 주식, 뉴스, 차트, 포트폴리오, 주문 설계, AI 요약을 한 화면에서 다룹니다.
 
+## 버전
+
+- Streamlit 버전: `app.py`
+- Next.js/React 버전: `next-terminal/`
+
+Streamlit은 빠른 프로토타입용이고, Next.js/React 버전은 더 고밀도 금융 터미널 UI와 웹 배포에 적합합니다.
+
 ## 로컬 실행
+
+Streamlit:
 
 ```bash
 python -m venv .venv
@@ -13,6 +22,16 @@ streamlit run app.py
 ```
 
 브라우저에서 `http://localhost:8501`을 엽니다.
+
+Next.js/React:
+
+```bash
+cd next-terminal
+npm install
+npm run dev
+```
+
+브라우저에서 `http://localhost:3000`을 엽니다.
 
 ## 기능
 
@@ -72,12 +91,24 @@ GEMINI_API_KEY=your_key
 
 ## 배포
 
+Streamlit Cloud:
+
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
 운영 서버에서는 Nginx/Caddy로 HTTPS를 종료하고, Streamlit은 내부 포트로만 노출하세요. 사용자/포트폴리오/레이아웃은 운영 DB로 이전하는 것이 좋습니다.
+
+Vercel로 Next.js/React 버전 배포:
+
+- Project import: `jangjb1204-sys/k-fin-terminal`
+- Root Directory: `next-terminal`
+- Framework Preset: `Next.js`
+- Build Command: `npm run build`
+- Output Directory: Next.js 기본값
+
+Vercel 배포 후 생성되는 URL이 어디서든 접속 가능한 React 버전 주소입니다.
 
 ## 레이아웃 커스터마이징
 
