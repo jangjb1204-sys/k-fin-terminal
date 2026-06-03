@@ -112,12 +112,71 @@ html, body, .stApp { background:var(--bg)!important; color:var(--text)!important
 .stTabs [data-baseweb="tab-list"] { gap:4px; border-bottom:1px solid var(--line); overflow-x:auto; }
 .stTabs [data-baseweb="tab"] { height:31px; background:#0a1018; border:1px solid #1e2a39; border-bottom:none; border-radius:3px 3px 0 0; padding:0 12px; }
 .stTabs [aria-selected="true"] { background:#132032!important; color:#fff!important; }
+.stRadio [role="radiogroup"] {
+  display:flex; gap:4px; overflow-x:auto; padding:2px 0 7px; border-bottom:1px solid var(--line);
+  scrollbar-width:thin; -webkit-overflow-scrolling:touch;
+}
+.stRadio [role="radio"] {
+  flex:0 0 auto; min-height:31px; padding:0 10px; border:1px solid #1e2a39; border-radius:3px;
+  background:#0a1018; align-items:center;
+}
+.stRadio [role="radio"][aria-checked="true"] { background:#132032; border-color:#38506d; }
+.stRadio [role="radio"] p { white-space:nowrap; font-size:12px; }
 button,input,textarea,select { border-radius:3px!important; }
 [data-testid="stMetric"] { background:#0b1118; border:1px solid #1e2a39; padding:8px; border-radius:4px; }
+.js-plotly-plot, .plot-container, .svg-container { max-width:100%!important; }
 @media(max-width:1050px) {
   .terminal-topbar { grid-template-columns:1fr; height:auto; padding:8px; }
   .strip { grid-template-columns:repeat(9,120px); }
   .metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:760px) {
+  .block-container { padding:.25rem .42rem .8rem!important; }
+  .terminal-topbar {
+    position:relative; margin:-.25rem -.42rem .25rem; gap:6px; padding:8px;
+    border-bottom-color:#2a3a50;
+  }
+  .brand { font-size:12px; }
+  .menu {
+    gap:8px; overflow-x:auto; padding-bottom:3px; -webkit-overflow-scrolling:touch;
+  }
+  .menu span {
+    flex:0 0 auto; border:1px solid #1e2a39; background:#0a1018; padding:5px 8px; border-radius:3px;
+  }
+  .cmd { height:32px; font-size:10px; width:100%; }
+  .ai-pill { height:32px; }
+  .session { justify-content:flex-start; flex-wrap:wrap; font-size:10px; }
+  .strip {
+    grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:118px;
+    margin:0 -.42rem .38rem; scroll-snap-type:x proximity;
+  }
+  .strip-cell { min-height:54px; padding:7px 8px; scroll-snap-align:start; }
+  .strip-cell b { font-size:10px; }
+  .strip-cell span { font-size:12px; }
+  .strip-cell small { font-size:9px; }
+  .stRadio [role="radiogroup"] {
+    margin:0 -.1rem .35rem; padding-bottom:8px;
+  }
+  .stRadio [role="radio"] {
+    min-width:max-content; min-height:34px; padding:0 11px;
+  }
+  .terminal-card { min-height:auto; }
+  .terminal-card h3 {
+    gap:8px; align-items:flex-start; font-size:10px; flex-direction:column;
+  }
+  .terminal-card .body {
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+  }
+  .dense-table { min-width:620px; font-size:10px; }
+  .dense-table th, .dense-table td { padding:6px 7px; }
+  .metric-grid { grid-template-columns:1fr; }
+  .mini-metric { min-height:58px; }
+  [data-testid="stHorizontalBlock"] { gap:.35rem; }
+  [data-testid="stMetric"] { padding:7px; }
+  [data-testid="stMetricValue"] { font-size:1.05rem; }
+  .news-item b { font-size:11px; }
+  .news-item p { font-size:10px; }
+  iframe { max-width:100%!important; }
 }
 </style>
         """,
@@ -757,6 +816,14 @@ def layout_tab() -> None:
     .box p { margin:8px; font-size:11px; color:#aebcce; line-height:1.4; }
     .green { color:#20d982; } .yellow { color:#e7c84b; }
     .hint { position:absolute; bottom:7px; left:8px; right:8px; color:#65758a; font-size:10px; }
+    @media(max-width: 760px) {
+      .workspace { height:920px; display:block; overflow:auto; }
+      .panel { width:100% !important; min-width:0; height:300px; margin-bottom:6px; resize:vertical; }
+      .grid { min-height:250px; }
+      .box { left:10px !important; width:calc(100% - 20px) !important; min-width:0; resize:vertical; }
+      .box header { min-height:34px; align-items:center; }
+      .hint { position:static; padding:8px; }
+    }
   </style>
   <div class="workspace">
     <section class="panel"><h4>Market Pulse</h4><div class="grid" id="left"></div></section>
