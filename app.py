@@ -18,25 +18,27 @@ from plotly.subplots import make_subplots
 APP_NAME = "K-Fin Terminal"
 APP_DIR = Path(".terminal_data")
 OWNER_ID = "owner"
+TOSS_BASE_URL = "https://openapi.tossinvest.com"
+TOSS_SOURCE = "Toss Securities Open API"
 STATUS_REAL = "실제 데이터"
 STATUS_DELAYED = "지연 데이터"
 STATUS_API = "API 필요"
 STATUS_NONE = "데이터 없음"
 
 US_MARKET_TICKERS = {
-    "SPX": "^GSPC",
-    "NDX": "^IXIC",
-    "DJI": "^DJI",
-    "VIX": "^VIX",
-    "US10Y": "^TNX",
-    "WTI": "CL=F",
-    "GOLD": "GC=F",
+    "AAPL": "AAPL",
+    "MSFT": "MSFT",
+    "NVDA": "NVDA",
+    "TSLA": "TSLA",
+    "SPY": "SPY",
+    "QQQ": "QQQ",
+    "Samsung": "005930",
     "USD/KRW": "KRW=X",
-    "BTC": "BTC-USD",
 }
-WATCHLIST_DEFAULT = ["AAPL", "MSFT", "NVDA", "TSLA", "SPY", "QQQ", "005930.KS"]
+WATCHLIST_DEFAULT = ["AAPL", "MSFT", "NVDA", "TSLA", "SPY", "QQQ", "005930"]
 PERIOD_OPTIONS = ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y"]
-INTERVAL_OPTIONS = ["1d", "1wk", "1mo"]
+INTERVAL_OPTIONS = ["1d", "1m"]
+TOSS_CANDLE_COUNTS = {"1mo": 31, "3mo": 92, "6mo": 183, "1y": 200, "2y": 200, "5y": 200, "10y": 200}
 
 
 @dataclass
@@ -277,51 +279,116 @@ def status_chip(status: str) -> str:
     return f'<span class="status-chip {cls}">{status}</span>'
 
 
+def toss_credentials_available() -> bool:
+    return bool(os.getenv("TOSS_CLIENT_ID", "").strip() and os.getenv("TOSS_CLIENT_SECRET", "").strip())
+
+
+def normalize_toss_symbol(symbol: str) -> str:
+    normalized = str(symbol).strip().upper()
+    if normalized.endswith(".KS") or normalized.endswith(".KQ"):
+        return normalized[:6]
+    return normalized
+
+
+def is_toss_symbol(symbol: str) -> bool:
+    return bool(symbol) and all(ch.isalnum() or ch in ".-" for ch in symbol)
+
+
+def decimal_or_nan(value: Any) -> float:
+    try:
+        if value is None or value == "":
+            return np.nan
+        return float(value)
+    except Exception:
+        return np.nan
+
+
+@st.cache_data(ttl=23 * 60 * 60, show_spinner=False)
+def issue_toss_token(client_id: str, client_secret: str) -> str:
+    response = requests.post(
+        f"{TOSS_BASE_URL}/oauth2/token",
+        data={"grant_type": "client_credentials", "client_id": client_id, "client_secret": client_secret},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=12,
+    )
+    response.raise_for_status()
+    token = response.json().get("access_token")
+    if not token:
+        raise RuntimeError("토스 OAuth 응답에 access_token이 없습니다.")
+    return str(token)
+
+
+def toss_token() -> str:
+    client_id = os.getenv("TOSS_CLIENT_ID", "").strip()
+    client_secret = os.getenv("TOSS_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        raise RuntimeError("TOSS_CLIENT_ID/TOSS_CLIENT_SECRET 환경변수가 필요합니다.")
+    return issue_toss_token(client_id, client_secret)
+
+
+def toss_get(path: str, extra_headers: dict[str, str] | None = None) -> dict[str, Any]:
+    headers = {"Authorization": f"Bearer {toss_token()}", "User-Agent": "k-fin-terminal/0.1"}
+    if extra_headers:
+        headers.update(extra_headers)
+    response = requests.get(f"{TOSS_BASE_URL}{path}", headers=headers, timeout=12)
+    if response.status_code == 401:
+        issue_toss_token.clear()
+    response.raise_for_status()
+    return response.json()
+
+
+def blank_quote_row(symbol: str, status: str, message: str = "") -> dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "price": np.nan,
+        "change_pct": np.nan,
+        "volume": np.nan,
+        "asof": "",
+        "currency": "",
+        "status": status,
+        "source": TOSS_SOURCE,
+        "message": message,
+    }
+
+
 @st.cache_data(ttl=45, show_spinner=False)
 def fetch_quote_table(symbols: tuple[str, ...]) -> pd.DataFrame:
-    rows = {
-        symbol: {
-            "symbol": symbol,
-            "price": np.nan,
-            "change_pct": np.nan,
-            "volume": np.nan,
-            "asof": "",
-            "status": STATUS_NONE,
-            "source": "Yahoo Finance",
-            "message": "",
-        }
-        for symbol in symbols
-    }
+    rows = {symbol: blank_quote_row(symbol, STATUS_NONE, "토스증권 시세 응답이 없습니다.") for symbol in symbols}
     if not symbols:
         return pd.DataFrame(rows.values())
+    if not toss_credentials_available():
+        return pd.DataFrame([blank_quote_row(symbol, STATUS_API, "TOSS_CLIENT_ID/TOSS_CLIENT_SECRET 환경변수가 필요합니다.") for symbol in symbols])
+
     try:
-        raw = yf.download(
-            list(symbols),
-            period="5d",
-            interval="1d",
-            group_by="ticker",
-            auto_adjust=False,
-            progress=False,
-            threads=True,
-        )
-        for symbol in symbols:
-            try:
-                hist = raw[symbol] if isinstance(raw.columns, pd.MultiIndex) else raw
-                hist = hist.dropna(how="all")
-                if hist.empty or "Close" not in hist.columns:
+        fx_symbols = [symbol for symbol in symbols if symbol == "KRW=X"]
+        requested = [(symbol, normalize_toss_symbol(symbol)) for symbol in symbols if symbol != "KRW=X"]
+        api_symbols = sorted({normalized for _, normalized in requested if is_toss_symbol(normalized)})
+        if api_symbols:
+            data = toss_get(f"/api/v1/prices?symbols={','.join(api_symbols)}")
+            price_map = {str(item.get("symbol", "")).upper(): item for item in data.get("result", [])}
+            for original, normalized in requested:
+                item = price_map.get(normalized)
+                if not item:
                     continue
-                last = hist.iloc[-1]
-                prev = hist["Close"].iloc[-2] if len(hist) > 1 else np.nan
-                change_pct = (last["Close"] / prev - 1) * 100 if prev and not pd.isna(prev) else np.nan
-                rows[symbol].update(
-                    price=float(last["Close"]),
-                    change_pct=float(change_pct) if not pd.isna(change_pct) else np.nan,
-                    volume=float(last.get("Volume", np.nan)),
-                    asof=str(hist.index[-1]),
-                    status=STATUS_DELAYED,
+                price = decimal_or_nan(item.get("lastPrice"))
+                rows[original].update(
+                    price=price,
+                    asof=item.get("timestamp") or "",
+                    currency=item.get("currency") or "",
+                    status=STATUS_DELAYED if pd.notna(price) else STATUS_NONE,
+                    message="현재가만 제공됩니다. 변동률/거래량은 임의 계산하지 않습니다.",
                 )
-            except Exception as exc:
-                rows[symbol]["message"] = str(exc)
+        if fx_symbols:
+            data = toss_get("/api/v1/exchange-rate?baseCurrency=USD&quoteCurrency=KRW")
+            result = data.get("result", {})
+            price = decimal_or_nan(result.get("rate"))
+            rows["KRW=X"].update(
+                price=price,
+                asof=result.get("validFrom") or "",
+                currency="KRW",
+                status=STATUS_DELAYED if pd.notna(price) else STATUS_NONE,
+                message="토스증권 참고용 USD/KRW 환율입니다.",
+            )
     except Exception as exc:
         for symbol in symbols:
             rows[symbol]["message"] = str(exc)
@@ -330,33 +397,10 @@ def fetch_quote_table(symbols: tuple[str, ...]) -> pd.DataFrame:
 
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_single_quote(symbol: str) -> dict[str, Any]:
-    row = {
-        "symbol": symbol,
-        "price": np.nan,
-        "change_pct": np.nan,
-        "volume": np.nan,
-        "asof": "",
-        "status": STATUS_NONE,
-        "source": "Yahoo Finance",
-        "message": "",
-    }
-    try:
-        hist = yf.Ticker(symbol).history(period="5d", interval="1d", auto_adjust=False)
-        if hist.empty:
-            return row
-        last = hist.iloc[-1]
-        prev = hist["Close"].iloc[-2] if len(hist) > 1 else np.nan
-        change_pct = (last["Close"] / prev - 1) * 100 if prev and not pd.isna(prev) else np.nan
-        row.update(
-            price=float(last["Close"]),
-            change_pct=float(change_pct) if not pd.isna(change_pct) else np.nan,
-            volume=float(last.get("Volume", np.nan)),
-            asof=str(hist.index[-1]),
-            status=STATUS_DELAYED,
-        )
-    except Exception as exc:
-        row["message"] = str(exc)
-    return row
+    table = fetch_quote_table((symbol,))
+    if table.empty:
+        return blank_quote_row(symbol, STATUS_NONE)
+    return table.iloc[0].to_dict()
 
 
 def fetch_quote_table_legacy(symbols: tuple[str, ...]) -> pd.DataFrame:
@@ -395,17 +439,37 @@ def fetch_quote_table_legacy(symbols: tuple[str, ...]) -> pd.DataFrame:
 
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_price_history(symbol: str, period: str, interval: str) -> DataResult:
+    if interval not in ("1d", "1m"):
+        return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, "토스증권 캔들은 1d/1m 인터벌만 지원합니다.")
+    if not toss_credentials_available():
+        return DataResult(pd.DataFrame(), STATUS_API, TOSS_SOURCE, "TOSS_CLIENT_ID/TOSS_CLIENT_SECRET 환경변수가 필요합니다.")
     try:
-        frame = yf.Ticker(symbol).history(period=period, interval=interval, auto_adjust=False)
-        if frame.empty:
-            return DataResult(pd.DataFrame(), STATUS_NONE, "Yahoo Finance", "No rows returned")
-        frame = frame.reset_index()
-        date_col = "Datetime" if "Datetime" in frame.columns else "Date"
-        frame[date_col] = pd.to_datetime(frame[date_col]).dt.tz_localize(None)
-        frame = frame.rename(columns={date_col: "Date"})
-        return DataResult(add_indicators(frame), STATUS_DELAYED, "Yahoo Finance")
+        normalized = normalize_toss_symbol(symbol)
+        if not is_toss_symbol(normalized):
+            return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, "토스증권이 지원하지 않는 심볼 형식입니다.")
+        count = 200 if interval == "1m" else TOSS_CANDLE_COUNTS.get(period, 200)
+        data = toss_get(f"/api/v1/candles?symbol={normalized}&interval={interval}&count={count}&adjusted=true")
+        candles = data.get("result", {}).get("candles", [])
+        if not candles:
+            return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, "No rows returned")
+        frame = pd.DataFrame(candles).rename(
+            columns={
+                "timestamp": "Date",
+                "openPrice": "Open",
+                "highPrice": "High",
+                "lowPrice": "Low",
+                "closePrice": "Close",
+                "volume": "Volume",
+            }
+        )
+        frame["Date"] = pd.to_datetime(frame["Date"]).dt.tz_localize(None)
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            frame[col] = pd.to_numeric(frame[col], errors="coerce")
+        frame = frame.sort_values("Date")
+        message = "토스증권 캔들은 요청당 최대 200개 봉을 반환합니다." if len(frame) >= 200 else ""
+        return DataResult(add_indicators(frame), STATUS_DELAYED, TOSS_SOURCE, message)
     except Exception as exc:
-        return DataResult(pd.DataFrame(), STATUS_NONE, "Yahoo Finance", str(exc))
+        return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, str(exc))
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -546,7 +610,7 @@ def topbar() -> None:
   <div class="menu"><span>Markets</span><span>Portfolio</span><span>Research</span><span>Tools</span><span>AI</span></div>
   <div class="cmd">LLM &lt;GO&gt; &nbsp; Ask anything or enter a command</div>
   <div class="ai-pill">AI COPILOT</div>
-  <div class="session"><span>NEW YORK</span><span>{datetime.now().strftime('%H:%M:%S')}</span><span class="up">Connected</span><span>{user_label}</span></div>
+  <div class="session"><span>TOSS</span><span>{datetime.now().strftime('%H:%M:%S')}</span><span class="up">Read-only</span><span>{user_label}</span></div>
 </div>
         """,
         unsafe_allow_html=True,
@@ -602,66 +666,61 @@ def render_bar(label: str, value: Any) -> str:
     )
 
 
+def render_price_row(label: str, record: dict[str, Any], prefix: str = "$") -> str:
+    value = record.get("price", np.nan)
+    width = 64 if pd.notna(value) else 0
+    return (
+        f"<div class='bar-row'><span class='term-label'>{label}</span>"
+        f"<div class='bar-track'><div class='bar-fill' style='--w:{width:.0f}%'></div></div>"
+        f"<span class='term-value'>{quote_price_text(record, prefix)}</span></div>"
+    )
+
+
 def render_heat_cell(label: str, record: dict[str, Any]) -> str:
-    change = record.get("change_pct", np.nan)
-    cls = class_for_change(change)
-    return f"<div class='heat-cell'><b>{label}</b><span class='{cls}'>{quote_pct_text(record)}</span></div>"
+    prefix = "₩" if record.get("currency") == "KRW" else "$"
+    return f"<div class='heat-cell'><b>{label}</b><span class='flat'>{quote_price_text(record, prefix)}</span></div>"
 
 
 def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
-    spx = quote_record(quotes, "^GSPC")
-    ndx = quote_record(quotes, "^IXIC")
-    vix = quote_record(quotes, "^VIX")
-    us10y = quote_record(quotes, "^TNX")
-    wti = quote_record(quotes, "CL=F")
-    gold = quote_record(quotes, "GC=F")
-    usdkrw = quote_record(quotes, "KRW=X")
-    btc = quote_record(quotes, "BTC-USD")
     aapl = quote_record(quotes, "AAPL")
+    msft = quote_record(quotes, "MSFT")
     nvda = quote_record(quotes, "NVDA")
+    tsla = quote_record(quotes, "TSLA")
     spy = quote_record(quotes, "SPY")
     qqq = quote_record(quotes, "QQQ")
-    samsung = quote_record(quotes, "005930.KS")
+    samsung = quote_record(quotes, "005930")
+    usdkrw = quote_record(quotes, "KRW=X")
 
-    spx_change = spx.get("change_pct", np.nan)
-    vix_price = vix.get("price", np.nan)
-    if pd.isna(spx_change) or pd.isna(vix_price):
+    if pd.isna(spy.get("price", np.nan)) or pd.isna(qqq.get("price", np.nan)):
         regime = STATUS_NONE
-        regime_detail = "무료 데이터 응답이 없거나 제한되었습니다."
+        regime_detail = "토스 API 키가 없거나 응답이 제한되었습니다."
         meter = 18
-    elif spx_change >= 0 and vix_price < 20:
-        regime = "RISK-ON"
-        regime_detail = "주가지수 우위, 변동성 안정"
-        meter = 78
-    elif vix_price >= 25:
-        regime = "RISK-OFF"
-        regime_detail = "변동성 상승, 방어 모드"
-        meter = 35
     else:
-        regime = "NEUTRAL"
-        regime_detail = "혼조 구간"
-        meter = 56
+        regime = "WATCHLIST"
+        regime_detail = "토스 현재가 기반 감시 모드. 변동률은 임의 계산하지 않습니다."
+        meter = 62
 
     bars = "\n".join(
         [
-            render_bar("AAPL", aapl.get("change_pct", np.nan)),
-            render_bar("NVDA", nvda.get("change_pct", np.nan)),
-            render_bar("SPY", spy.get("change_pct", np.nan)),
-            render_bar("QQQ", qqq.get("change_pct", np.nan)),
-            render_bar("Samsung", samsung.get("change_pct", np.nan)),
+            render_price_row("AAPL", aapl),
+            render_price_row("NVDA", nvda),
+            render_price_row("SPY", spy),
+            render_price_row("QQQ", qqq),
+            render_price_row("Samsung", samsung, "₩"),
         ]
     )
     html = f"""
 <div class="terminal-grid">
   <div class="stack">
     <section class="terminal-panel">
-      <div class="head"><span>Market Regime</span>{status_chip(quote_status_text(spx))}</div>
+      <div class="head"><span>Toss Market Pulse</span>{status_chip(quote_status_text(spy))}</div>
       <div class="body">
         <div class="regime-meter">
           <div class="donut" style="--meter:{meter}%;"><span>{regime}</span></div>
           <div>
-            <div class="term-row"><span class="term-label">SPX</span><span class="{class_for_change(spx_change)} term-value">{quote_pct_text(spx)}</span></div>
-            <div class="term-row"><span class="term-label">VIX</span><span class="term-value">{quote_price_text(vix, '')}</span></div>
+            <div class="term-row"><span class="term-label">SPY</span><span class="term-value">{quote_price_text(spy)}</span></div>
+            <div class="term-row"><span class="term-label">QQQ</span><span class="term-value">{quote_price_text(qqq)}</span></div>
+            <div class="term-row"><span class="term-label">USD/KRW</span><span class="term-value">{quote_price_text(usdkrw, '₩')}</span></div>
             <div class="terminal-note">{regime_detail}</div>
           </div>
         </div>
@@ -674,10 +733,10 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
     <section class="terminal-panel">
       <div class="head"><span>Data Coverage</span><span class="status-chip status-api">Provider</span></div>
       <div class="body">
-        <div class="term-row"><span class="term-label">US/KR Quotes</span><span class="term-value">{STATUS_DELAYED}</span></div>
+        <div class="term-row"><span class="term-label">US/KR Quotes</span><span class="term-value">Toss</span></div>
         <div class="term-row"><span class="term-label">SEC Filings</span><span class="term-value">{STATUS_API}</span></div>
         <div class="term-row"><span class="term-label">DART Filings</span><span class="term-value">{STATUS_API}</span></div>
-        <div class="term-row"><span class="term-label">Macro/FX/Commodities</span><span class="term-value">{STATUS_DELAYED}</span></div>
+        <div class="term-row"><span class="term-label">Index/Commodity</span><span class="term-value">별도 API 필요</span></div>
       </div>
     </section>
   </div>
@@ -687,32 +746,32 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
       <div class="body">
         <div class="terminal-chart">
           <div class="chart-status">
-            {status_chip(quote_status_text(spx))}
+            {status_chip(quote_status_text(spy))}
             <span class="status-chip">No synthetic prices</span>
-            <span class="status-chip status-api">Real-time API optional</span>
+            <span class="status-chip">Toss read-only</span>
           </div>
           <div class="chart-placeholder">실제 캔들/거래량/RSI/MACD는 차트 탭에서 선택한 기간과 인터벌로 로드됩니다.<br>첫 화면은 빠른 시장 상태만 표시합니다.</div>
           <div class="chart-legend">
-            <div class="legend-box"><label>SPX</label><strong>{quote_price_text(spx, '')}</strong></div>
-            <div class="legend-box"><label>NDX</label><strong>{quote_price_text(ndx, '')}</strong></div>
-            <div class="legend-box"><label>US 10Y</label><strong>{quote_price_text(us10y, '')}</strong></div>
-            <div class="legend-box"><label>USD/KRW</label><strong>{quote_price_text(usdkrw, '')}</strong></div>
+            <div class="legend-box"><label>AAPL</label><strong>{quote_price_text(aapl)}</strong></div>
+            <div class="legend-box"><label>NVDA</label><strong>{quote_price_text(nvda)}</strong></div>
+            <div class="legend-box"><label>005930</label><strong>{quote_price_text(samsung, '₩')}</strong></div>
+            <div class="legend-box"><label>USD/KRW</label><strong>{quote_price_text(usdkrw, '₩')}</strong></div>
           </div>
         </div>
       </div>
     </section>
     <section class="terminal-panel">
-      <div class="head"><span>Asset Heatmap</span><span class="status-chip">Change %</span></div>
+      <div class="head"><span>Price Board</span><span class="status-chip">Current</span></div>
       <div class="body">
         <div class="heat-grid">
-          {render_heat_cell("SPX", spx)}
-          {render_heat_cell("NDX", ndx)}
-          {render_heat_cell("WTI", wti)}
-          {render_heat_cell("GOLD", gold)}
-          {render_heat_cell("BTC", btc)}
-          {render_heat_cell("USD/KRW", usdkrw)}
           {render_heat_cell("AAPL", aapl)}
+          {render_heat_cell("MSFT", msft)}
           {render_heat_cell("NVDA", nvda)}
+          {render_heat_cell("TSLA", tsla)}
+          {render_heat_cell("SPY", spy)}
+          {render_heat_cell("QQQ", qqq)}
+          {render_heat_cell("Samsung", samsung)}
+          {render_heat_cell("USD/KRW", usdkrw)}
         </div>
       </div>
     </section>
@@ -731,7 +790,7 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
       <div class="body">
         <div class="term-row"><span class="term-label">Holdings</span><span class="term-value">자동 저장</span></div>
         <div class="term-row"><span class="term-label">Sector/Currency</span><span class="term-value">저장 가능</span></div>
-        <div class="term-row"><span class="term-label">External Sync</span><span class="term-value">사용 안 함</span></div>
+        <div class="term-row"><span class="term-label">External Sync</span><span class="term-value">토스 읽기 전용 확장</span></div>
       </div>
     </section>
   </div>
@@ -783,7 +842,7 @@ def market_tab() -> None:
         )
     st.markdown("<div class='terminal-card'><h3>Raw Market Monitor <span>US/KR/ETF/FX/Rates/Commodities</span></h3><div class='body'>", unsafe_allow_html=True)
     st.markdown("<table class='dense-table'><thead><tr><th>Ticker</th><th>Last</th><th>Chg%</th><th>Volume</th><th>Status</th><th>Source</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table></div></div>", unsafe_allow_html=True)
-    st.info("무료 공개 데이터는 대개 지연/제한 데이터입니다. 실시간 전문 시세는 Polygon, IEX Cloud, Nasdaq Data Link, broker market data 권한이 필요합니다.")
+    st.info("토스 현재가 응답에 없는 변동률/거래량은 임의 계산하지 않습니다. 지수, 원자재, 금리는 별도 데이터 API가 필요합니다.")
 
 
 def charts_tab(user_data: dict[str, Any] | None) -> tuple[str, DataResult]:
@@ -899,7 +958,7 @@ def research_tab(symbol: str) -> None:
 <div class="metric-grid">
 <div class="mini-metric"><label>SEC Filings</label><strong>{STATUS_API}</strong><small>SEC companyfacts/submissions CIK 매핑 필요</small></div>
 <div class="mini-metric"><label>DART 공시</label><strong>{STATUS_API}</strong><small>DART_OPEN_API_KEY 필요</small></div>
-<div class="mini-metric"><label>실적</label><strong>{STATUS_DELAYED}</strong><small>Yahoo Finance 일부 제공</small></div>
+<div class="mini-metric"><label>실적</label><strong>{STATUS_API}</strong><small>별도 실적 데이터 API 필요</small></div>
 <div class="mini-metric"><label>ETF/배당</label><strong>{STATUS_API}</strong><small>데이터 제공자 API 권장</small></div>
 </div>
         """,
@@ -953,14 +1012,16 @@ def tools_tab(user_data: dict[str, Any] | None) -> None:
     cols = st.columns(4)
     settings["default_symbol"] = cols[0].text_input("기본 종목", settings.get("default_symbol", "AAPL"))
     settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules", "gemini"], index=0 if settings.get("ai_provider") != "gemini" else 1)
-    settings["data_provider"] = cols[2].selectbox("데이터 제공자", ["yahoo", "polygon"], index=0)
+    settings["data_provider"] = cols[2].selectbox("데이터 제공자", ["toss"], index=0)
     settings["layout"] = cols[3].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
     if st.button("설정 저장", use_container_width=True):
         persist_user(user_data)
         st.success("저장했습니다.")
     envs = [
+        ("TOSS_CLIENT_ID", "토스 OAuth client id"),
+        ("TOSS_CLIENT_SECRET", "토스 OAuth client secret"),
+        ("TOSS_ACCOUNT_SEQ", "토스 보유자산 계좌 고정"),
         ("GEMINI_API_KEY", "뉴스 번역/AI 분석"),
-        ("POLYGON_API_KEY", "근실시간 시세/집계 캔들"),
         ("DART_OPEN_API_KEY", "한국 DART 공시"),
         ("SEC_USER_AGENT", "SEC 공시 호출 식별자"),
     ]

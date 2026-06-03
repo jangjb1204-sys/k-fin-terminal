@@ -2,22 +2,14 @@
 
 | 영역 | 기본 소스 | 상태 표시 | 제한 |
 |---|---|---|---|
-| 미국 주식/ETF | Yahoo Finance via `yfinance` | 지연 데이터 | 실시간 보장 없음, 호출 제한 가능 |
-| 지수 | Yahoo Finance | 지연 데이터 | 일부 지수 심볼 미지원 가능 |
-| 금리 | Yahoo Finance `^TNX` | 지연 데이터 | 수익률 표기 방식 확인 필요 |
-| 원자재 | Yahoo Finance futures symbols | 지연 데이터 | 선물 만기/연속물 차이 |
-| 환율 | Yahoo Finance FX symbols | 지연 데이터 | 은행 고시환율과 다를 수 있음 |
-| 한국 주식 | Yahoo Finance `.KS`, `.KQ` | 지연 데이터 | 일부 종목/거래량 제한 |
-| 뉴스 | Yahoo Finance News | 지연 데이터 | 제공 기사 수와 원문 접근 제한 |
-| 배당/ETF 보유 | 제공자별 API | API 필요 | Yahoo 무료 데이터는 제한적 |
-
-## 권장 상용/API 소스
-
-- 미국 근실시간/집계 시세: Polygon.io, IEX Cloud, Nasdaq Data Link
-- SEC: `data.sec.gov/submissions` 및 `companyfacts`, `SEC_USER_AGENT` 필수
-- 한국 DART: OpenDART, `DART_OPEN_API_KEY` 필요
-- 포트폴리오: 현재는 수동 입력/로컬 저장
-- AI 번역/분석: Gemini API
+| 미국 주식/ETF 현재가 | 토스증권 `GET /api/v1/prices` | 지연 데이터 | 변동률/거래량은 현재가 응답에 없음 |
+| 한국 주식 현재가 | 토스증권 `GET /api/v1/prices` | 지연 데이터 | 심볼은 `005930` 형식 사용 |
+| 차트 | 토스증권 `GET /api/v1/candles` | 지연 데이터 | `1m`, `1d`만 지원, 요청당 최대 200개 봉 |
+| USD/KRW | 토스증권 `GET /api/v1/exchange-rate` | 지연 데이터 | 참고용 표시 환율, 실제 주문 환율과 다를 수 있음 |
+| 보유자산 | 토스증권 `GET /api/v1/accounts`, `GET /api/v1/holdings` | 지연 데이터/API 필요 | 계좌 권한 필요, 읽기 전용 |
+| 지수/금리/원자재/코인 | 별도 데이터 API | API 필요 | 토스 기본 설명서 범위 밖 |
+| 뉴스/번역 | 뉴스 제공자 + Gemini 선택 | API 필요 | 현재 UI는 연결 상태와 규칙 기반 구조 표시 |
+| SEC/DART | SEC, OpenDART | API 필요 | `SEC_USER_AGENT`, `DART_OPEN_API_KEY` 필요 |
 
 ## 가짜 데이터 금지 정책
 
@@ -28,4 +20,4 @@
 - `API 필요`
 - `데이터 없음`
 
-포트폴리오의 예시 행은 로그인 직후 기능 확인을 위한 사용자 파일 초기값이며, 사용자가 수정/삭제할 수 있습니다. 시장 가격 자체는 API 응답이 없으면 계산하지 않습니다.
+토스 현재가 응답에 없는 변동률, 거래량, 지수, 원자재 수치는 계산하거나 추정하지 않습니다. 필요한 경우 별도 데이터 제공자를 추가한 뒤 소스와 지연 여부를 표시합니다.

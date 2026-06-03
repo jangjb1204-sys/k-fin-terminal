@@ -1,21 +1,26 @@
 # API 키 정리
 
-개인용 앱이라 로그인은 필요 없습니다. API 키는 배포 환경의 환경변수나 Vercel/Streamlit Secrets에 넣으면 됩니다.
+개인용 앱이라 로그인은 필요 없습니다. API 키는 로컬 `.env`, Streamlit Secrets, Docker 환경변수, 또는 서버 Secret Manager에 넣습니다. 브라우저에 직접 노출하면 안 됩니다.
 
-## 바로 있으면 좋은 키
+## 필수
 
-| 우선순위 | 키 | 용도 | 없을 때 |
-|---|---|---|---|
-| 1 | `GEMINI_API_KEY` | 뉴스 번역, 한국어 AI 요약/분석 | 규칙 기반 요약만 사용 |
-| 2 | `POLYGON_API_KEY` | 미국 주식/ETF 근실시간 시세, 지수/원자재/환율 보강, 집계 캔들 | Yahoo 지연 데이터만 표시 |
-| 3 | `DART_OPEN_API_KEY` | 한국 DART 공시 | DART는 `API 필요` 표시 |
-| 4 | `SEC_USER_AGENT` | SEC submissions/companyfacts 호출 식별자 | SEC 공시는 제한 또는 미연동 |
+| 키 | 용도 | 없을 때 |
+|---|---|---|
+| `TOSS_CLIENT_ID` | 토스증권 OAuth2 토큰 발급 | 시세/차트/환율/보유자산이 `API 필요` |
+| `TOSS_CLIENT_SECRET` | 토스증권 OAuth2 토큰 발급 | 시세/차트/환율/보유자산이 `API 필요` |
 
-## 추천
+## 선택
 
-지금 단계에서는 `GEMINI_API_KEY`와 `POLYGON_API_KEY`만 먼저 넣는 것을 추천합니다.
+| 키 | 용도 | 없을 때 |
+|---|---|---|
+| `TOSS_ACCOUNT_SEQ` | 보유자산 조회 계좌 고정 | `/api/v1/accounts` 첫 계좌 사용 |
+| `GEMINI_API_KEY` | 뉴스 번역, 한국어 AI 요약/분석 | 규칙 기반 요약만 사용 |
+| `DART_OPEN_API_KEY` | 한국 DART 공시 | DART는 `API 필요` 표시 |
+| `SEC_USER_AGENT` | SEC submissions/companyfacts 호출 식별자 | SEC 공시는 제한 또는 미연동 |
 
-- Gemini: 번역/요약 품질 개선
-- Polygon: Yahoo rate limit 문제 완화, 실시간에 가까운 시장 데이터와 차트 데이터 확장
+## 토스증권 사용 범위
 
-옵션과 주문 기능은 현재 범위에서 제외했기 때문에 거래 API 키는 필요 없습니다.
+- 사용: OAuth 토큰, 현재가, 캔들, USD/KRW 환율, 시장 캘린더 확장 가능, 계좌/보유자산 읽기 전용
+- 제외: 주문 생성, 주문 정정, 주문 취소, 옵션
+
+토스증권 OAuth는 client당 유효 토큰이 1개라서 앱 서버에서 토큰을 캐시합니다. 운영에서 서버 인스턴스를 여러 개 띄우면 외부 캐시나 단일 API 프록시를 두는 편이 안정적입니다.
