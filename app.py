@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
-import yfinance as yf
 from plotly.subplots import make_subplots
 
 
@@ -103,10 +102,6 @@ html, body, .stApp { background:var(--bg)!important; color:var(--text)!important
 .dense-table th:first-child,.dense-table td:first-child { text-align:left; }
 .dense-table th { color:#91a0b4; font-weight:700; background:#0a1018; }
 .dense-table td { color:#dbe5f1; font-family:JetBrains Mono,monospace; }
-.news-item { border-bottom:1px solid #192332; padding:8px 0; }
-.news-item b { display:block; font-size:12px; color:#edf5ff; }
-.news-item p { margin:4px 0; color:#a8b6c8; font-size:11px; line-height:1.45; }
-.news-meta { color:#7d8b9e; font:10px JetBrains Mono; display:flex; gap:8px; flex-wrap:wrap; }
 .warning-box { border:1px solid #694c16; background:#191306; color:#e7c84b; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:8px; }
 .ok-box { border:1px solid #1d6545; background:#06170f; color:#8af1bd; padding:8px 10px; border-radius:4px; font-size:12px; }
 .terminal-grid {
@@ -235,8 +230,6 @@ button,input,textarea,select { border-radius:3px!important; }
   [data-testid="stHorizontalBlock"] { gap:.35rem; }
   [data-testid="stMetric"] { padding:7px; }
   [data-testid="stMetricValue"] { font-size:1.05rem; }
-  .news-item b { font-size:11px; }
-  .news-item p { font-size:10px; }
   iframe { max-width:100%!important; }
   .terminal-grid { grid-template-columns:1fr; }
   .terminal-chart { min-height:240px; }
@@ -403,40 +396,6 @@ def fetch_single_quote(symbol: str) -> dict[str, Any]:
     return table.iloc[0].to_dict()
 
 
-def fetch_quote_table_legacy(symbols: tuple[str, ...]) -> pd.DataFrame:
-    rows = []
-    for symbol in symbols:
-        row = {
-            "symbol": symbol,
-            "price": np.nan,
-            "change_pct": np.nan,
-            "volume": np.nan,
-            "asof": "",
-            "status": STATUS_NONE,
-            "source": "Yahoo Finance",
-            "message": "",
-        }
-        try:
-            hist = yf.Ticker(symbol).history(period="5d", interval="1d", auto_adjust=False)
-            if hist.empty:
-                rows.append(row)
-                continue
-            last = hist.iloc[-1]
-            prev = hist["Close"].iloc[-2] if len(hist) > 1 else np.nan
-            change_pct = (last["Close"] / prev - 1) * 100 if prev and not pd.isna(prev) else np.nan
-            row.update(
-                price=float(last["Close"]),
-                change_pct=float(change_pct) if not pd.isna(change_pct) else np.nan,
-                volume=float(last.get("Volume", np.nan)),
-                asof=str(hist.index[-1]),
-                status=STATUS_DELAYED,
-            )
-        except Exception as exc:
-            row["message"] = str(exc)
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_price_history(symbol: str, period: str, interval: str) -> DataResult:
     if interval not in ("1d", "1m"):
@@ -472,6 +431,36 @@ def fetch_price_history(symbol: str, period: str, interval: str) -> DataResult:
         return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, str(exc))
 
 
+@st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
+def fetch_stock_info(symbols: tuple[str, ...]) -> DataResult:
+    if not toss_credentials_available():
+        return DataResult(pd.DataFrame(), STATUS_API, TOSS_SOURCE, "TOSS_CLIENT_ID/TOSS_CLIENT_SECRET 환경변수가 필요합니다.")
+    normalized = [normalize_toss_symbol(symbol) for symbol in symbols if is_toss_symbol(normalize_toss_symbol(symbol))]
+    if not normalized:
+        return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, "조회할 수 있는 심볼이 없습니다.")
+    try:
+        data = toss_get(f"/api/v1/stocks?symbols={','.join(dict.fromkeys(normalized))}")
+        rows = data.get("result", [])
+        return DataResult(pd.DataFrame(rows), STATUS_DELAYED if rows else STATUS_NONE, TOSS_SOURCE)
+    except Exception as exc:
+        return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, str(exc))
+
+
+@st.cache_data(ttl=5 * 60, show_spinner=False)
+def fetch_stock_warnings(symbol: str) -> DataResult:
+    if not toss_credentials_available():
+        return DataResult(pd.DataFrame(), STATUS_API, TOSS_SOURCE, "TOSS_CLIENT_ID/TOSS_CLIENT_SECRET 환경변수가 필요합니다.")
+    normalized = normalize_toss_symbol(symbol)
+    if not is_toss_symbol(normalized):
+        return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, "토스증권이 지원하지 않는 심볼 형식입니다.")
+    try:
+        data = toss_get(f"/api/v1/stocks/{normalized}/warnings")
+        rows = data.get("result", [])
+        return DataResult(pd.DataFrame(rows), STATUS_DELAYED if rows else STATUS_NONE, TOSS_SOURCE)
+    except Exception as exc:
+        return DataResult(pd.DataFrame(), STATUS_NONE, TOSS_SOURCE, str(exc))
+
+
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     for col in ["Open", "High", "Low", "Close", "Volume"]:
@@ -494,71 +483,6 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out["MACD"] = ema12 - ema26
     out["MACD_SIGNAL"] = out["MACD"].ewm(span=9, adjust=False).mean()
     return out
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_news(symbol: str, limit: int = 8) -> list[dict[str, Any]]:
-    try:
-        items = yf.Ticker(symbol).news or []
-    except Exception:
-        return []
-    normalized = []
-    for item in items[:limit]:
-        content = item.get("content", item)
-        title = content.get("title") or item.get("title") or STATUS_NONE
-        summary = content.get("summary") or content.get("description") or item.get("summary") or ""
-        link = content.get("canonicalUrl", {}).get("url") or item.get("link") or ""
-        provider = content.get("provider", {}).get("displayName") or item.get("publisher") or "Yahoo Finance"
-        text = f"{title} {summary}"
-        normalized.append(
-            {
-                "title": title,
-                "summary": summary,
-                "link": link,
-                "provider": provider,
-                "sentiment": rule_sentiment(text),
-                "importance": rule_importance(text),
-                "tickers": extract_tickers(text, symbol),
-                "ko": translate_or_mark(summary or title),
-            }
-        )
-    return normalized
-
-
-def rule_sentiment(text: str) -> str:
-    lower = text.lower()
-    positive = ["beats", "surge", "rally", "upgrade", "record", "growth", "strong", "bullish", "profit"]
-    negative = ["miss", "drop", "fall", "downgrade", "probe", "lawsuit", "weak", "bearish", "loss"]
-    score = sum(word in lower for word in positive) - sum(word in lower for word in negative)
-    return "긍정" if score > 0 else "부정" if score < 0 else "중립"
-
-
-def rule_importance(text: str) -> str:
-    lower = text.lower()
-    words = ["earnings", "sec", "guidance", "fomc", "inflation", "merger", "acquisition", "lawsuit"]
-    return "높음" if any(word in lower for word in words) else "보통"
-
-
-def extract_tickers(text: str, fallback: str) -> str:
-    found = [token.strip(".,:;()[]") for token in text.split() if token.isupper() and 1 <= len(token) <= 5]
-    clean = [token for token in found if token.isalpha()]
-    return ", ".join(dict.fromkeys(clean[:5])) or fallback
-
-
-def translate_or_mark(text: str) -> str:
-    if not text:
-        return STATUS_NONE
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        return "번역 API 필요: Gemini API 키가 없어서 원문 요약만 표시합니다."
-    prompt = f"다음 미국 금융 뉴스를 한국어로 2문장 이하로 번역/요약해줘:\n{text[:3000]}"
-    try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-        res = requests.post(f"{url}?key={api_key}", json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=12)
-        res.raise_for_status()
-        return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception:
-        return "번역 실패: 원문을 확인하세요."
 
 
 def load_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -607,7 +531,7 @@ def topbar() -> None:
         f"""
 <div class="terminal-topbar">
   <div class="brand">K-FIN TERMINAL ></div>
-  <div class="menu"><span>Markets</span><span>Portfolio</span><span>Research</span><span>Tools</span><span>AI</span></div>
+  <div class="menu"><span>Markets</span><span>Portfolio</span><span>Toss Info</span><span>Tools</span><span>AI</span></div>
   <div class="cmd">LLM &lt;GO&gt; &nbsp; Ask anything or enter a command</div>
   <div class="ai-pill">AI COPILOT</div>
   <div class="session"><span>TOSS</span><span>{datetime.now().strftime('%H:%M:%S')}</span><span class="up">Read-only</span><span>{user_label}</span></div>
@@ -734,9 +658,9 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
       <div class="head"><span>Data Coverage</span><span class="status-chip status-api">Provider</span></div>
       <div class="body">
         <div class="term-row"><span class="term-label">US/KR Quotes</span><span class="term-value">Toss</span></div>
-        <div class="term-row"><span class="term-label">SEC Filings</span><span class="term-value">{STATUS_API}</span></div>
-        <div class="term-row"><span class="term-label">DART Filings</span><span class="term-value">{STATUS_API}</span></div>
-        <div class="term-row"><span class="term-label">Index/Commodity</span><span class="term-value">별도 API 필요</span></div>
+        <div class="term-row"><span class="term-label">Stock Info</span><span class="term-value">Toss</span></div>
+        <div class="term-row"><span class="term-label">Warnings</span><span class="term-value">Toss</span></div>
+        <div class="term-row"><span class="term-label">Index/Commodity</span><span class="term-value">제외됨</span></div>
       </div>
     </section>
   </div>
@@ -778,11 +702,11 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
   </div>
   <div class="stack">
     <section class="terminal-panel">
-      <div class="head"><span>AI Assistant</span><span class="status-chip">KR Summary</span></div>
+      <div class="head"><span>AI Assistant</span><span class="status-chip">Local Rules</span></div>
       <div class="body">
         <div class="term-row"><span class="term-label">Fallback</span><span class="term-value">Rules</span></div>
-        <div class="term-row"><span class="term-label">Gemini</span><span class="term-value">{'설정됨' if os.getenv('GEMINI_API_KEY') else STATUS_API}</span></div>
-        <div class="terminal-note">뉴스/차트/포트폴리오를 바탕으로 한국어 요약. API 키가 없으면 규칙 기반 요약 사용.</div>
+        <div class="term-row"><span class="term-label">External AI</span><span class="term-value">제거됨</span></div>
+        <div class="terminal-note">토스 차트와 로컬 포트폴리오를 바탕으로 규칙 기반 한국어 요약만 사용합니다.</div>
       </div>
     </section>
     <section class="terminal-panel">
@@ -840,9 +764,9 @@ def market_tab() -> None:
         rows.append(
             f"<tr><td>{row.get('symbol')}</td><td>{money(row.get('price'))}</td><td class='{class_for_change(row.get('change_pct'))}'>{pct(row.get('change_pct'))}</td><td>{volume}</td><td>{row.get('status')}</td><td>{row.get('source')}</td></tr>"
         )
-    st.markdown("<div class='terminal-card'><h3>Raw Market Monitor <span>US/KR/ETF/FX/Rates/Commodities</span></h3><div class='body'>", unsafe_allow_html=True)
+    st.markdown("<div class='terminal-card'><h3>Raw Market Monitor <span>Toss stocks/ETF/FX</span></h3><div class='body'>", unsafe_allow_html=True)
     st.markdown("<table class='dense-table'><thead><tr><th>Ticker</th><th>Last</th><th>Chg%</th><th>Volume</th><th>Status</th><th>Source</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table></div></div>", unsafe_allow_html=True)
-    st.info("토스 현재가 응답에 없는 변동률/거래량은 임의 계산하지 않습니다. 지수, 원자재, 금리는 별도 데이터 API가 필요합니다.")
+    st.info("토스 현재가 응답에 없는 변동률/거래량은 임의 계산하지 않습니다. 지수, 원자재, 금리, 뉴스, 공시는 현재 범위에서 제외했습니다.")
 
 
 def charts_tab(user_data: dict[str, Any] | None) -> tuple[str, DataResult]:
@@ -858,31 +782,6 @@ def charts_tab(user_data: dict[str, Any] | None) -> tuple[str, DataResult]:
     else:
         st.plotly_chart(chart_figure(result.frame, symbol), use_container_width=True)
     return symbol, result
-
-
-def news_tab(symbol: str) -> list[dict[str, Any]]:
-    cols = st.columns([1, 4])
-    selected = cols[0].text_input("뉴스 티커", value=symbol).upper().strip() or symbol
-    cols[1].markdown(f"{status_chip(STATUS_DELAYED)} <span class='status-chip'>Yahoo Finance News</span> <span class='status-chip'>Gemini 번역 선택형</span>", unsafe_allow_html=True)
-    news = fetch_news(selected)
-    if not news:
-        st.warning(f"{selected}: {STATUS_NONE} 또는 API 제한")
-        return []
-    st.markdown("<div class='terminal-card'><h3>Top News <span>Original + Korean</span></h3><div class='body'>", unsafe_allow_html=True)
-    for item in news:
-        st.markdown(
-            f"""
-<div class="news-item">
-  <b>{item['title']}</b>
-  <p>{item['summary'] or STATUS_NONE}</p>
-  <p><b>한국어</b> {item['ko']}</p>
-  <div class="news-meta"><span>{item['provider']}</span><span>감성 {item['sentiment']}</span><span>중요도 {item['importance']}</span><span>관련 {item['tickers']}</span></div>
-</div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div></div>", unsafe_allow_html=True)
-    return news
 
 
 def portfolio_frame(user_data: dict[str, Any] | None) -> pd.DataFrame:
@@ -953,39 +852,64 @@ def portfolio_tab(user_data: dict[str, Any] | None) -> None:
 
 
 def research_tab(symbol: str) -> None:
+    selected = st.text_input("토스 종목 심볼", value=normalize_toss_symbol(symbol)).upper().strip() or normalize_toss_symbol(symbol)
+    info_result = fetch_stock_info((selected,))
+    warning_result = fetch_stock_warnings(selected)
+    st.markdown(f"{status_chip(info_result.status)} <span class='status-chip'>{info_result.source}</span>", unsafe_allow_html=True)
+    if info_result.frame.empty:
+        st.warning(f"{selected}: {info_result.message or STATUS_NONE}")
+        return
+
+    info = info_result.frame.iloc[0].to_dict()
     st.markdown(
         f"""
 <div class="metric-grid">
-<div class="mini-metric"><label>SEC Filings</label><strong>{STATUS_API}</strong><small>SEC companyfacts/submissions CIK 매핑 필요</small></div>
-<div class="mini-metric"><label>DART 공시</label><strong>{STATUS_API}</strong><small>DART_OPEN_API_KEY 필요</small></div>
-<div class="mini-metric"><label>실적</label><strong>{STATUS_API}</strong><small>별도 실적 데이터 API 필요</small></div>
-<div class="mini-metric"><label>ETF/배당</label><strong>{STATUS_API}</strong><small>데이터 제공자 API 권장</small></div>
+<div class="mini-metric"><label>Name</label><strong>{info.get('name', STATUS_NONE)}</strong><small>{info.get('englishName', '')}</small></div>
+<div class="mini-metric"><label>Market</label><strong>{info.get('market', STATUS_NONE)}</strong><small>{info.get('securityType', '')}</small></div>
+<div class="mini-metric"><label>Status</label><strong>{info.get('status', STATUS_NONE)}</strong><small>{info.get('currency', '')}</small></div>
+<div class="mini-metric"><label>Shares</label><strong>{fmt_compact(info.get('sharesOutstanding'))}</strong><small>Outstanding</small></div>
 </div>
         """,
         unsafe_allow_html=True,
     )
-    try:
-        info = yf.Ticker(symbol).info or {}
-        cols = st.columns(4)
-        cols[0].metric("Market Cap", money(info.get("marketCap")))
-        cols[1].metric("Forward PE", f"{info.get('forwardPE', STATUS_NONE)}")
-        cols[2].metric("Dividend Yield", pct((info.get("dividendYield") or np.nan) * 100))
-        cols[3].metric("Beta", f"{info.get('beta', STATUS_NONE)}")
-    except Exception:
-        st.warning("기본 재무 데이터 조회 실패")
+    detail_rows = [
+        ("Symbol", info.get("symbol", STATUS_NONE)),
+        ("ISIN", info.get("isinCode", STATUS_NONE)),
+        ("List Date", info.get("listDate", STATUS_NONE)),
+        ("Delist Date", info.get("delistDate") or "-"),
+        ("Common Share", str(info.get("isCommonShare", STATUS_NONE))),
+        ("Leverage Factor", info.get("leverageFactor") or "-"),
+    ]
+    st.table(pd.DataFrame(detail_rows, columns=["항목", "값"]))
+
+    st.markdown(f"{status_chip(warning_result.status)} <span class='status-chip'>Warnings</span>", unsafe_allow_html=True)
+    if warning_result.frame.empty:
+        st.info(warning_result.message or "활성 매수 유의사항이 없습니다.")
+    else:
+        st.dataframe(warning_result.frame, use_container_width=True)
 
 
-def ai_summary(symbol: str, price_result: DataResult, news: list[dict[str, Any]], portfolio: pd.DataFrame) -> str:
+def fmt_compact(value: Any) -> str:
+    number = decimal_or_nan(value)
+    if pd.isna(number):
+        return STATUS_NONE
+    if abs(number) >= 1_000_000_000:
+        return f"{number / 1_000_000_000:.2f}B"
+    if abs(number) >= 1_000_000:
+        return f"{number / 1_000_000:.2f}M"
+    return f"{number:,.0f}"
+
+
+def ai_summary(symbol: str, price_result: DataResult, portfolio: pd.DataFrame) -> str:
     frame = price_result.frame
     if frame.empty:
         return f"{symbol}: {STATUS_NONE}. 분석할 가격 데이터가 없습니다."
     latest = frame.iloc[-1]
     change_20 = frame["Close"].pct_change(20).iloc[-1] * 100 if len(frame) > 20 else np.nan
     rsi = latest.get("RSI", np.nan)
-    headline = news[0]["title"] if news else "뉴스 데이터 없음"
     holdings = portfolio[portfolio["ticker"].str.upper() == symbol.upper()] if not portfolio.empty else pd.DataFrame()
     position = "보유 없음" if holdings.empty else f"보유 {holdings['shares'].sum():,.4g}주"
-    base = f"{symbol} 규칙 기반 요약: 최근 종가 {money(latest.get('Close'))}, 20거래일 수익률 {pct(change_20)}, RSI {rsi:.1f}입니다. 최근 뉴스: {headline}. 포트폴리오 상태: {position}. "
+    base = f"{symbol} 규칙 기반 요약: 최근 종가 {money(latest.get('Close'))}, 20거래일 수익률 {pct(change_20)}, RSI {rsi:.1f}입니다. 포트폴리오 상태: {position}. "
     if pd.notna(rsi) and rsi >= 70:
         return base + "RSI 기준 단기 과열 구간입니다."
     if pd.notna(rsi) and rsi <= 30:
@@ -993,14 +917,11 @@ def ai_summary(symbol: str, price_result: DataResult, news: list[dict[str, Any]]
     return base + "기술적 모멘텀은 중립에 가깝습니다."
 
 
-def ai_tab(symbol: str, price_result: DataResult, news: list[dict[str, Any]], user_data: dict[str, Any] | None) -> None:
+def ai_tab(symbol: str, price_result: DataResult, user_data: dict[str, Any] | None) -> None:
     portfolio = portfolio_frame(user_data)
-    provider = st.selectbox("AI Provider", ["rules", "gemini"], index=0)
-    prompt = st.text_area("질문", value=f"{symbol}의 차트, 뉴스, 포트폴리오 관점 요약")
+    prompt = st.text_area("질문", value=f"{symbol}의 차트와 포트폴리오 관점 요약")
     if st.button("분석 실행", use_container_width=True):
-        if provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
-            st.warning("GEMINI_API_KEY가 없어 규칙 기반 요약으로 대체합니다.")
-        st.markdown(f"<div class='ok-box'>{ai_summary(symbol, price_result, news, portfolio)}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='ok-box'>{ai_summary(symbol, price_result, portfolio)}</div>", unsafe_allow_html=True)
         st.caption(f"입력 질문: {prompt}")
 
 
@@ -1011,7 +932,7 @@ def tools_tab(user_data: dict[str, Any] | None) -> None:
     settings = user_data.setdefault("settings", {})
     cols = st.columns(4)
     settings["default_symbol"] = cols[0].text_input("기본 종목", settings.get("default_symbol", "AAPL"))
-    settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules", "gemini"], index=0 if settings.get("ai_provider") != "gemini" else 1)
+    settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules"], index=0)
     settings["data_provider"] = cols[2].selectbox("데이터 제공자", ["toss"], index=0)
     settings["layout"] = cols[3].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
     if st.button("설정 저장", use_container_width=True):
@@ -1020,10 +941,6 @@ def tools_tab(user_data: dict[str, Any] | None) -> None:
     envs = [
         ("TOSS_CLIENT_ID", "토스 OAuth client id"),
         ("TOSS_CLIENT_SECRET", "토스 OAuth client secret"),
-        ("TOSS_ACCOUNT_SEQ", "토스 보유자산 계좌 고정"),
-        ("GEMINI_API_KEY", "뉴스 번역/AI 분석"),
-        ("DART_OPEN_API_KEY", "한국 DART 공시"),
-        ("SEC_USER_AGENT", "SEC 공시 호출 식별자"),
     ]
     st.table(pd.DataFrame([{"env": name, "purpose": purpose, "status": "설정됨" if os.getenv(name) else STATUS_API} for name, purpose in envs]))
 
@@ -1054,17 +971,17 @@ def layout_tab() -> None:
   </style>
   <div class="workspace">
     <section class="panel"><h4>Market Pulse</h4><div class="grid" id="left"></div></section>
-    <section class="panel"><h4>Charts / Research</h4><div class="grid" id="center"></div></section>
+    <section class="panel"><h4>Charts / Toss Info</h4><div class="grid" id="center"></div></section>
     <section class="panel"><h4>AI / Risk</h4><div class="grid" id="right"></div></section>
   </div>
   <script>
     const defaults = [
-      ["left","Regime","Risk-on<br><span class='green'>Liquidity abundant</span>",10,10,250,120],
-      ["left","Cross Asset","SPX / US10Y / WTI / GOLD / USDKRW",10,150,250,150],
+      ["left","Toss Pulse","Watchlist<br><span class='green'>Read-only market data</span>",10,10,250,120],
+      ["left","Toss Prices","AAPL / NVDA / SPY / QQQ / Samsung / USDKRW",10,150,250,150],
       ["center","Main Chart","Drag cards, resize boxes, and resize panel borders. Layout is saved in this browser.",10,10,430,250],
-      ["center","News / Filings","SEC/DART cards show API-needed states until keys are configured.",455,10,300,250],
+      ["center","Toss Stock Info","Name, market, currency, listing status, warnings.",455,10,300,250],
       ["center","Portfolio Graph","Use app Portfolio tab for large mode.",10,280,360,180],
-      ["right","AI Assistant","Rules fallback works without API.<br>Gemini is optional.",10,10,260,130],
+      ["right","AI Assistant","Local rule summary only.<br>No external AI API.",10,10,260,130],
       ["right","Risk","Max weight, sector, currency and country concentration.",10,170,260,150]
     ];
     const saved = JSON.parse(localStorage.getItem("kfin-layout-v1") || "null") || defaults;
@@ -1103,11 +1020,10 @@ def main() -> None:
     init_page()
     user_data = load_owner_profile()
     topbar()
-    nav_items = ["시장", "모니터", "차트", "뉴스", "포트폴리오", "리서치/공시", "AI", "설정", "레이아웃"]
+    nav_items = ["시장", "모니터", "차트", "포트폴리오", "토스 종목정보", "AI", "설정", "레이아웃"]
     active_tab = st.radio("탭", nav_items, horizontal=True, label_visibility="collapsed", key="active_terminal_tab")
     symbol = (user_data or {}).get("settings", {}).get("default_symbol", "AAPL")
     price_result = DataResult(pd.DataFrame(), STATUS_NONE, "Not loaded")
-    news: list[dict[str, Any]] = []
 
     if active_tab == "시장":
         market_tab()
@@ -1115,15 +1031,13 @@ def main() -> None:
         layout_tab()
     elif active_tab == "차트":
         symbol, price_result = charts_tab(user_data)
-    elif active_tab == "뉴스":
-        news = news_tab(symbol)
     elif active_tab == "포트폴리오":
         portfolio_tab(user_data)
-    elif active_tab == "리서치/공시":
+    elif active_tab == "토스 종목정보":
         research_tab(symbol)
     elif active_tab == "AI":
         price_result = fetch_price_history(symbol, "1y", "1d")
-        ai_tab(symbol, price_result, news, user_data)
+        ai_tab(symbol, price_result, user_data)
     elif active_tab == "설정":
         tools_tab(user_data)
     elif active_tab == "레이아웃":
