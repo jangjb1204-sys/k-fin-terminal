@@ -506,7 +506,7 @@ def ensure_user_file(username: str) -> Path:
                 "user_id": safe,
                 "created_at": datetime.now().isoformat(timespec="seconds"),
                 "watchlist": WATCHLIST_DEFAULT,
-                "settings": {"default_symbol": "AAPL", "ai_provider": "rules", "broker_mode": "paper", "layout": "terminal-grid"},
+                "settings": {"default_symbol": "AAPL", "broker_mode": "paper", "layout": "terminal-grid"},
                 "portfolio": [
                     {"ticker": "AAPL", "shares": 3.0, "cost_basis": 165.0, "currency": "USD", "sector": "Technology", "country": "US"},
                     {"ticker": "SPY", "shares": 1.0, "cost_basis": 480.0, "currency": "USD", "sector": "ETF", "country": "US"},
@@ -531,9 +531,9 @@ def topbar() -> None:
         f"""
 <div class="terminal-topbar">
   <div class="brand">K-FIN TERMINAL ></div>
-  <div class="menu"><span>Markets</span><span>Portfolio</span><span>Toss Info</span><span>Tools</span><span>AI</span></div>
+  <div class="menu"><span>Markets</span><span>Portfolio</span><span>Toss Info</span><span>Tools</span></div>
   <div class="cmd">LLM &lt;GO&gt; &nbsp; Ask anything or enter a command</div>
-  <div class="ai-pill">AI COPILOT</div>
+  <div class="ai-pill">TOSS ONLY</div>
   <div class="session"><span>TOSS</span><span>{datetime.now().strftime('%H:%M:%S')}</span><span class="up">Read-only</span><span>{user_label}</span></div>
 </div>
         """,
@@ -701,14 +701,6 @@ def render_terminal_dashboard(quotes: pd.DataFrame) -> None:
     </section>
   </div>
   <div class="stack">
-    <section class="terminal-panel">
-      <div class="head"><span>AI Assistant</span><span class="status-chip">Local Rules</span></div>
-      <div class="body">
-        <div class="term-row"><span class="term-label">Fallback</span><span class="term-value">Rules</span></div>
-        <div class="term-row"><span class="term-label">External AI</span><span class="term-value">제거됨</span></div>
-        <div class="terminal-note">토스 차트와 로컬 포트폴리오를 바탕으로 규칙 기반 한국어 요약만 사용합니다.</div>
-      </div>
-    </section>
     <section class="terminal-panel">
       <div class="head"><span>Portfolio Risk</span><span class="status-chip">Local</span></div>
       <div class="body">
@@ -900,41 +892,15 @@ def fmt_compact(value: Any) -> str:
     return f"{number:,.0f}"
 
 
-def ai_summary(symbol: str, price_result: DataResult, portfolio: pd.DataFrame) -> str:
-    frame = price_result.frame
-    if frame.empty:
-        return f"{symbol}: {STATUS_NONE}. 분석할 가격 데이터가 없습니다."
-    latest = frame.iloc[-1]
-    change_20 = frame["Close"].pct_change(20).iloc[-1] * 100 if len(frame) > 20 else np.nan
-    rsi = latest.get("RSI", np.nan)
-    holdings = portfolio[portfolio["ticker"].str.upper() == symbol.upper()] if not portfolio.empty else pd.DataFrame()
-    position = "보유 없음" if holdings.empty else f"보유 {holdings['shares'].sum():,.4g}주"
-    base = f"{symbol} 규칙 기반 요약: 최근 종가 {money(latest.get('Close'))}, 20거래일 수익률 {pct(change_20)}, RSI {rsi:.1f}입니다. 포트폴리오 상태: {position}. "
-    if pd.notna(rsi) and rsi >= 70:
-        return base + "RSI 기준 단기 과열 구간입니다."
-    if pd.notna(rsi) and rsi <= 30:
-        return base + "RSI 기준 단기 침체 구간입니다."
-    return base + "기술적 모멘텀은 중립에 가깝습니다."
-
-
-def ai_tab(symbol: str, price_result: DataResult, user_data: dict[str, Any] | None) -> None:
-    portfolio = portfolio_frame(user_data)
-    prompt = st.text_area("질문", value=f"{symbol}의 차트와 포트폴리오 관점 요약")
-    if st.button("분석 실행", use_container_width=True):
-        st.markdown(f"<div class='ok-box'>{ai_summary(symbol, price_result, portfolio)}</div>", unsafe_allow_html=True)
-        st.caption(f"입력 질문: {prompt}")
-
-
 def tools_tab(user_data: dict[str, Any] | None) -> None:
     st.subheader("사용자 설정")
     if user_data is None:
         user_data = load_owner_profile()
     settings = user_data.setdefault("settings", {})
-    cols = st.columns(4)
+    cols = st.columns(3)
     settings["default_symbol"] = cols[0].text_input("기본 종목", settings.get("default_symbol", "AAPL"))
-    settings["ai_provider"] = cols[1].selectbox("AI 기본값", ["rules"], index=0)
-    settings["data_provider"] = cols[2].selectbox("데이터 제공자", ["toss"], index=0)
-    settings["layout"] = cols[3].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
+    settings["data_provider"] = cols[1].selectbox("데이터 제공자", ["toss"], index=0)
+    settings["layout"] = cols[2].selectbox("레이아웃", ["terminal-grid", "compact"], index=0)
     if st.button("설정 저장", use_container_width=True):
         persist_user(user_data)
         st.success("저장했습니다.")
@@ -972,7 +938,7 @@ def layout_tab() -> None:
   <div class="workspace">
     <section class="panel"><h4>Market Pulse</h4><div class="grid" id="left"></div></section>
     <section class="panel"><h4>Charts / Toss Info</h4><div class="grid" id="center"></div></section>
-    <section class="panel"><h4>AI / Risk</h4><div class="grid" id="right"></div></section>
+    <section class="panel"><h4>Portfolio / Risk</h4><div class="grid" id="right"></div></section>
   </div>
   <script>
     const defaults = [
@@ -981,8 +947,8 @@ def layout_tab() -> None:
       ["center","Main Chart","Drag cards, resize boxes, and resize panel borders. Layout is saved in this browser.",10,10,430,250],
       ["center","Toss Stock Info","Name, market, currency, listing status, warnings.",455,10,300,250],
       ["center","Portfolio Graph","Use app Portfolio tab for large mode.",10,280,360,180],
-      ["right","AI Assistant","Local rule summary only.<br>No external AI API.",10,10,260,130],
-      ["right","Risk","Max weight, sector, currency and country concentration.",10,170,260,150]
+      ["right","Risk","Max weight, sector, currency and country concentration.",10,10,260,150],
+      ["right","Data Policy","Toss API only.<br>No synthetic prices.",10,190,260,130]
     ];
     const saved = JSON.parse(localStorage.getItem("kfin-layout-v1") || "null") || defaults;
     function makeBox(item) {
@@ -1020,7 +986,7 @@ def main() -> None:
     init_page()
     user_data = load_owner_profile()
     topbar()
-    nav_items = ["시장", "모니터", "차트", "포트폴리오", "토스 종목정보", "AI", "설정", "레이아웃"]
+    nav_items = ["시장", "모니터", "차트", "포트폴리오", "토스 종목정보", "설정", "레이아웃"]
     active_tab = st.radio("탭", nav_items, horizontal=True, label_visibility="collapsed", key="active_terminal_tab")
     symbol = (user_data or {}).get("settings", {}).get("default_symbol", "AAPL")
     price_result = DataResult(pd.DataFrame(), STATUS_NONE, "Not loaded")
@@ -1035,9 +1001,6 @@ def main() -> None:
         portfolio_tab(user_data)
     elif active_tab == "토스 종목정보":
         research_tab(symbol)
-    elif active_tab == "AI":
-        price_result = fetch_price_history(symbol, "1y", "1d")
-        ai_tab(symbol, price_result, user_data)
     elif active_tab == "설정":
         tools_tab(user_data)
     elif active_tab == "레이아웃":
