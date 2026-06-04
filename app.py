@@ -69,12 +69,11 @@ html, body, .stApp { background:var(--bg)!important; color:var(--text)!important
 .block-container { padding:.35rem .65rem 1rem!important; max-width:100%!important; }
 [data-testid="stSidebar"] { display:none; }
 .terminal-topbar {
-  display:grid; grid-template-columns:168px 1fr 390px 128px 255px; gap:8px; align-items:center;
+  display:grid; grid-template-columns:168px 1fr 128px 255px; gap:8px; align-items:center;
   min-height:38px; border-bottom:1px solid var(--line); background:#030507; position:sticky; top:0; z-index:5;
   margin:-.35rem -.65rem .35rem; padding:0 10px;
 }
 .brand { font-weight:800; color:#fff; font-size:13px; white-space:nowrap; }
-.menu { display:flex; gap:18px; font-size:11px; font-weight:700; color:#c7d1df; text-transform:uppercase; white-space:nowrap; }
 .cmd { height:25px; border:1px solid #29384b; background:#060a10; border-radius:3px; color:#8b98aa; display:flex; align-items:center; padding:0 10px; font:11px JetBrains Mono,monospace; overflow:hidden; }
 .ai-pill { height:25px; background:#402aa5; color:#fff; border:1px solid #715dff; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; white-space:nowrap; }
 .session { display:flex; justify-content:flex-end; gap:8px; color:#8b98aa; font-size:11px; align-items:center; white-space:nowrap; }
@@ -193,12 +192,6 @@ button,input,textarea,select { border-radius:3px!important; }
     border-bottom-color:#2a3a50;
   }
   .brand { font-size:12px; }
-  .menu {
-    gap:8px; overflow-x:auto; padding-bottom:3px; -webkit-overflow-scrolling:touch;
-  }
-  .menu span {
-    flex:0 0 auto; border:1px solid #1e2a39; background:#0a1018; padding:5px 8px; border-radius:3px;
-  }
   .cmd { height:32px; font-size:10px; width:100%; }
   .ai-pill { height:32px; }
   .session { justify-content:flex-start; flex-wrap:wrap; font-size:10px; }
@@ -531,8 +524,7 @@ def topbar() -> None:
         f"""
 <div class="terminal-topbar">
   <div class="brand">K-FIN TERMINAL ></div>
-  <div class="menu"><span>Markets</span><span>Portfolio</span><span>Toss Info</span><span>Tools</span></div>
-  <div class="cmd">LLM &lt;GO&gt; &nbsp; Ask anything or enter a command</div>
+  <div class="cmd">TOSS &lt;GO&gt; &nbsp; Enter ticker or command</div>
   <div class="ai-pill">TOSS ONLY</div>
   <div class="session"><span>TOSS</span><span>{datetime.now().strftime('%H:%M:%S')}</span><span class="up">Read-only</span><span>{user_label}</span></div>
 </div>
@@ -986,15 +978,13 @@ def main() -> None:
     init_page()
     user_data = load_owner_profile()
     topbar()
-    nav_items = ["시장", "모니터", "차트", "포트폴리오", "토스 종목정보", "설정", "레이아웃"]
+    nav_items = ["시장", "차트", "포트폴리오", "토스 종목정보", "설정", "레이아웃"]
     active_tab = st.radio("탭", nav_items, horizontal=True, label_visibility="collapsed", key="active_terminal_tab")
     symbol = (user_data or {}).get("settings", {}).get("default_symbol", "AAPL")
     price_result = DataResult(pd.DataFrame(), STATUS_NONE, "Not loaded")
 
     if active_tab == "시장":
         market_tab()
-    elif active_tab == "모니터":
-        layout_tab()
     elif active_tab == "차트":
         symbol, price_result = charts_tab(user_data)
     elif active_tab == "포트폴리오":
